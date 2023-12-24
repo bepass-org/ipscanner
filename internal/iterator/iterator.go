@@ -1,4 +1,4 @@
-package ipgen
+package iterator
 
 import (
 	"fmt"
