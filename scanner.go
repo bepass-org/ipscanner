@@ -20,19 +20,23 @@ type IPScanner struct {
 func NewScanner(options ...Option) *IPScanner {
 	p := &IPScanner{
 		options: statute.ScannerOptions{
-			UseIPv4:            false,
-			UseIPv6:            false,
-			Timeout:            1 * time.Minute,
-			InsecureSkipVerify: true,
-			Logger:             statute.DefaultLogger{},
-			Dialer:             &dialer.AppDialer{},
-			TLSDialer:          &dialer.AppTLSDialer{},
-			RawDialerFunc:      statute.DefaultDialerFunc,
-			TLSDialerFunc:      statute.DefaultTLSDialerFunc,
-			HttpClient:         statute.DefaultHTTPClient(nil, nil),
-			HTTPPath:           "/",
-			Hostname:           "localhost",
-			IPBasketSize:       8,
+			UseIPv4:                false,
+			UseIPv6:                false,
+			Timeout:                1 * time.Minute,
+			InsecureSkipVerify:     true,
+			Logger:                 statute.DefaultLogger{},
+			Dialer:                 &dialer.AppDialer{},
+			TLSDialer:              &dialer.AppTLSDialer{},
+			RawDialerFunc:          statute.DefaultDialerFunc,
+			TLSDialerFunc:          statute.DefaultTLSDialerFunc,
+			HttpClient:             statute.DefaultHTTPClient(nil, nil),
+			HTTPPath:               "/",
+			Hostname:               "localhost",
+			Port:                   443,
+			IPBasketSize:           8,
+			DesirablePingThreshold: 400,
+			BasketTTL:              30 * time.Second,
+			QueueChangeCallback:    statute.DefaultQueueChangeCallback,
 		},
 		logger: statute.DefaultLogger{},
 	}
@@ -152,6 +156,28 @@ func WithIPBasketSize(size int) Option {
 	return func(i *IPScanner) {
 		i.options.IPBasketSize = size
 	}
+}
+
+func WithDesirablePingThreshold(threshold int) Option {
+	return func(i *IPScanner) {
+		i.options.DesirablePingThreshold = threshold
+	}
+}
+
+func WithBasketTTL(ttl time.Duration) Option {
+	return func(i *IPScanner) {
+		i.options.BasketTTL = ttl
+	}
+}
+
+func WithQueueChangeCallback(callback statute.TQueueChangeCallback) Option {
+	return func(i *IPScanner) {
+		i.options.QueueChangeCallback = callback
+	}
+}
+
+func (i *IPScanner) SetQueueChangeCallback(callback statute.TQueueChangeCallback) {
+	i.options.QueueChangeCallback = callback
 }
 
 // run engine and in case of new event call onChange callback also if it gets canceled with context

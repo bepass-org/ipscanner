@@ -83,3 +83,10 @@ func (l DefaultLogger) Debug(s string, v ...interface{}) {
 func (l DefaultLogger) Error(s string, v ...interface{}) {
 	fmt.Printf(fmt.Sprintf("%s\r\n", s), v...)
 }
+
+func DefaultQueueChangeCallback(ips []IPInfo) {
+	fmt.Printf("queue change: %d\r\n", len(ips))
+	for _, ip := range ips {
+		fmt.Printf("IP:%s\tRTT:%d\tTS:%s\r\n", ip.IP.String(), ip.RTT, ip.CreatedAt.String())
+	}
+}

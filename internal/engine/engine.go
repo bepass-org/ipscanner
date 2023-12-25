@@ -19,7 +19,7 @@ type Engine struct {
 }
 
 func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Engine {
-	queue := NewIPQueue(opts.IPBasketSize)
+	queue := NewIPQueue(opts.DesirablePingThreshold, opts.IPBasketSize, opts.BasketTTL)
 	var contextToUse context.Context
 	var cancel context.CancelFunc
 
@@ -37,6 +37,7 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 		cancelFunc: cancel,
 		ping:       p.DoPing,
 		generator:  iterator.NewIterator(opts.CidrList),
+		Logger:     opts.Logger,
 	}
 }
 
@@ -63,15 +64,13 @@ func (e *Engine) Run() {
 				for _, ip := range batch {
 					e.Logger.Debug("Pinging IP: %s", ip)
 					if rtt, err := e.ping(ip); err == nil {
-						if rtt < 400 {
-							ipInfo := IPInfo{
-								IP:        ip,
-								RTT:       rtt,
-								CreatedAt: time.Now(),
-							}
-							if !e.ipQueue.Enqueue(ipInfo) {
-								<-e.ipQueue.available
-							}
+						ipInfo := IPInfo{
+							IP:        ip,
+							RTT:       rtt,
+							CreatedAt: time.Now(),
+						}
+						if e.ipQueue.Enqueue(ipInfo) {
+							<-e.ipQueue.available
 						}
 					}
 				}
