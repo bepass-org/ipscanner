@@ -112,6 +112,12 @@ func WithHostname(hostname string) Option {
 	}
 }
 
+func WithPort(port uint16) Option {
+	return func(i *IPScanner) {
+		i.options.Port = port
+	}
+}
+
 func WithCidrList(cidrList []string) Option {
 	return func(i *IPScanner) {
 		i.options.CidrList = cidrList
@@ -120,25 +126,25 @@ func WithCidrList(cidrList []string) Option {
 
 func WithHTTPPing() Option {
 	return func(i *IPScanner) {
-		i.options.SelectedOps = append(i.options.SelectedOps, "http")
+		i.options.SelectedOps |= statute.HTTPPing
 	}
 }
 
 func WithQUICPing() Option {
 	return func(i *IPScanner) {
-		i.options.SelectedOps = append(i.options.SelectedOps, "quic")
+		i.options.SelectedOps |= statute.QUICPing
 	}
 }
 
 func WithTCPPing() Option {
 	return func(i *IPScanner) {
-		i.options.SelectedOps = append(i.options.SelectedOps, "tcp")
+		i.options.SelectedOps |= statute.TCPPing
 	}
 }
 
 func WithTLSPing() Option {
 	return func(i *IPScanner) {
-		i.options.SelectedOps = append(i.options.SelectedOps, "tls")
+		i.options.SelectedOps |= statute.TLSPing
 	}
 }
 

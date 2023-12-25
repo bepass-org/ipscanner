@@ -1,55 +1,93 @@
 package ping
 
 import (
+	"fmt"
+	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
-	"time"
 )
 
-func Do(ip net.IP) (int, error) {
-	// sum all available ping methods
-	sum := 0
-	hp, err := httpPing(ip)
-	if err != nil {
-		return 0, err
-	}
-	sum += hp
-	tp, err := tlsPing(ip)
-	if err != nil {
-		return 0, err
-	}
-	sum += tp
-	tp, err = tcpPing(ip)
-	if err != nil {
-		return 0, err
-	}
-	sum += tp
-	return sum / 3, nil
+type Ping struct {
+	IP      net.IP
+	options statute.ScannerOptions
 }
 
-func httpPing(ip net.IP) (int, error) {
-	hp := NewHttpPing("GET", "https://"+ip.String()+"/", 5*time.Second)
-	hp.IP = ip
-	pr := hp.Ping()
-	err := pr.Error()
-	if err != nil {
-		return 0, err
+// Do ping
+func (p *Ping) Do(ip net.IP) (int, error) {
+	var sum, ops, hp, tp int
+	var err error
+	if p.options.SelectedOps&statute.HTTPPing > 0 {
+		hp, err = p.httpPing(ip)
+		if err != nil {
+			return 0, err
+		}
+		ops++
+		sum += hp
 	}
-	return pr.Result(), nil
+	if p.options.SelectedOps&statute.TLSPing > 0 {
+		tp, err = p.tlsPing(ip)
+		if err != nil {
+			return 0, err
+		}
+		ops++
+		sum += tp
+	}
+	if p.options.SelectedOps&statute.TCPPing > 0 {
+		tp, err = p.tcpPing(ip)
+		if err != nil {
+			return 0, err
+		}
+		ops++
+		sum += tp
+	}
+	if p.options.SelectedOps&statute.QUICPing > 0 {
+		tp, err = p.quicPing(ip)
+		if err != nil {
+			return 0, err
+		}
+		ops++
+		sum += tp
+	}
+	if ops == 0 {
+		return 99, nil
+	}
+	return sum / ops, nil
 }
 
-func tlsPing(ip net.IP) (int, error) {
-	tp := NewTlsPing(ip.String(), 443, 5*time.Second, 5*time.Second)
-	tp.IP = ip
-	pr := tp.Ping()
-	err := pr.Error()
-	if err != nil {
-		return 0, err
-	}
-	return pr.Result(), nil
+func (p *Ping) httpPing(ip net.IP) (int, error) {
+	return p.calc(
+		NewHttpPing(
+			ip,
+			"GET",
+			fmt.Sprintf(
+				"https://%s:%d%s",
+				p.options.Hostname,
+				p.options.Port,
+				p.options.HTTPPath,
+			),
+			p.options.Timeout,
+		),
+	)
 }
 
-func tcpPing(ip net.IP) (int, error) {
-	tp := NewTcpPing(ip.String(), 443, 5*time.Second)
+func (p *Ping) tlsPing(ip net.IP) (int, error) {
+	return p.calc(
+		NewTlsPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout, p.options.Timeout),
+	)
+}
+
+func (p *Ping) tcpPing(ip net.IP) (int, error) {
+	return p.calc(
+		NewTcpPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout),
+	)
+}
+
+func (p *Ping) quicPing(ip net.IP) (int, error) {
+	return p.calc(
+		NewQuicPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout),
+	)
+}
+
+func (p *Ping) calc(tp statute.IPing) (int, error) {
 	pr := tp.Ping()
 	err := pr.Error()
 	if err != nil {

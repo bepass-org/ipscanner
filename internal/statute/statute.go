@@ -6,11 +6,16 @@ import (
 	"time"
 )
 
+var HTTPPing = 1 << 0
+var TLSPing = 1 << 1
+var TCPPing = 1 << 2
+var QUICPing = 1 << 3
+
 type ScannerOptions struct {
 	UseIPv4            bool
 	UseIPv6            bool
 	CidrList           []string // CIDR ranges to scan
-	SelectedOps        []string
+	SelectedOps        int
 	Logger             Logger
 	Timeout            time.Duration
 	InsecureSkipVerify bool
@@ -21,5 +26,6 @@ type ScannerOptions struct {
 	HttpClient         *http.Client
 	HTTPPath           string
 	Hostname           string
+	Port               uint16
 	IPBasketSize       int
 }

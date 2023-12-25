@@ -84,8 +84,9 @@ func (t *TlsPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &TlsPingResult{int(t1.Sub(t0).Milliseconds()), int(t2.Sub(t1).Milliseconds()), client.ConnectionState().Version, nil, ip}
 }
 
-func NewTlsPing(host string, port uint16, ct, ht time.Duration) *TlsPing {
+func NewTlsPing(ip net.IP, host string, port uint16, ct, ht time.Duration) *TlsPing {
 	return &TlsPing{
+		IP:                ip,
 		Host:              host,
 		Port:              port,
 		ConnectionTimeout: ct,

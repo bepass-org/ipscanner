@@ -82,8 +82,9 @@ func (h *QuicPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &QuicPingResult{int(time.Since(t0).Milliseconds()), nil, ip, uint32(conn.ConnectionState().Version), conn.ConnectionState().TLS.Version}
 }
 
-func NewQuicPing(host string, port uint16, timeout time.Duration) *QuicPing {
+func NewQuicPing(ip net.IP, host string, port uint16, timeout time.Duration) *QuicPing {
 	return &QuicPing{
+		IP:      ip,
 		Host:    host,
 		Port:    port,
 		Timeout: timeout,

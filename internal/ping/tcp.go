@@ -70,12 +70,12 @@ func (tp *TcpPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &TcpPingResult{int(time.Since(t0).Milliseconds()), nil, ip}
 }
 
-func NewTcpPing(host string, port uint16, timeout time.Duration) *TcpPing {
+func NewTcpPing(ip net.IP, host string, port uint16, timeout time.Duration) *TcpPing {
 	return &TcpPing{
 		host:    host,
 		Port:    port,
 		Timeout: timeout,
-		ip:      net.ParseIP(host),
+		ip:      ip,
 	}
 }
 

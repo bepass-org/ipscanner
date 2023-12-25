@@ -144,8 +144,9 @@ func (h *HttpPing) errorResult(err error) *HttpPingResult {
 	return r
 }
 
-func NewHttpPing(method, url string, timeout time.Duration) *HttpPing {
+func NewHttpPing(ip net.IP, method, url string, timeout time.Duration) *HttpPing {
 	return &HttpPing{
+		IP:      ip,
 		Method:  method,
 		URL:     url,
 		Timeout: timeout,
