@@ -7,15 +7,14 @@ import (
 )
 
 type Ping struct {
-	IP      net.IP
-	options statute.ScannerOptions
+	Options *statute.ScannerOptions
 }
 
-// Do ping
-func (p *Ping) Do(ip net.IP) (int, error) {
+// DoPing performs a ping on the given IP address.
+func (p *Ping) DoPing(ip net.IP) (int, error) {
 	var sum, ops, hp, tp int
 	var err error
-	if p.options.SelectedOps&statute.HTTPPing > 0 {
+	if p.Options.SelectedOps&statute.HTTPPing > 0 {
 		hp, err = p.httpPing(ip)
 		if err != nil {
 			return 0, err
@@ -23,7 +22,7 @@ func (p *Ping) Do(ip net.IP) (int, error) {
 		ops++
 		sum += hp
 	}
-	if p.options.SelectedOps&statute.TLSPing > 0 {
+	if p.Options.SelectedOps&statute.TLSPing > 0 {
 		tp, err = p.tlsPing(ip)
 		if err != nil {
 			return 0, err
@@ -31,7 +30,7 @@ func (p *Ping) Do(ip net.IP) (int, error) {
 		ops++
 		sum += tp
 	}
-	if p.options.SelectedOps&statute.TCPPing > 0 {
+	if p.Options.SelectedOps&statute.TCPPing > 0 {
 		tp, err = p.tcpPing(ip)
 		if err != nil {
 			return 0, err
@@ -39,7 +38,7 @@ func (p *Ping) Do(ip net.IP) (int, error) {
 		ops++
 		sum += tp
 	}
-	if p.options.SelectedOps&statute.QUICPing > 0 {
+	if p.Options.SelectedOps&statute.QUICPing > 0 {
 		tp, err = p.quicPing(ip)
 		if err != nil {
 			return 0, err
@@ -60,30 +59,30 @@ func (p *Ping) httpPing(ip net.IP) (int, error) {
 			"GET",
 			fmt.Sprintf(
 				"https://%s:%d%s",
-				p.options.Hostname,
-				p.options.Port,
-				p.options.HTTPPath,
+				p.Options.Hostname,
+				p.Options.Port,
+				p.Options.HTTPPath,
 			),
-			p.options.Timeout,
+			p.Options.Timeout,
 		),
 	)
 }
 
 func (p *Ping) tlsPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewTlsPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout, p.options.Timeout),
+		NewTlsPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout, p.Options.Timeout),
 	)
 }
 
 func (p *Ping) tcpPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewTcpPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout),
+		NewTcpPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout),
 	)
 }
 
 func (p *Ping) quicPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewQuicPing(ip, p.options.Hostname, p.options.Port, p.options.Timeout),
+		NewQuicPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout),
 	)
 }
 

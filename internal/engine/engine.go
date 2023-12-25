@@ -28,12 +28,14 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 	} else {
 		contextToUse, cancel = context.WithCancel(context.Background())
 	}
-
+	p := ping.Ping{
+		Options: opts,
+	}
 	return &Engine{
 		ipQueue:    queue,
 		ctx:        contextToUse,
 		cancelFunc: cancel,
-		ping:       ping.Do,
+		ping:       p.DoPing,
 		generator:  iterator.NewIterator(opts.CidrList),
 	}
 }
