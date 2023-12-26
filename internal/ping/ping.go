@@ -63,26 +63,26 @@ func (p *Ping) httpPing(ip net.IP) (int, error) {
 				p.Options.Port,
 				p.Options.HTTPPath,
 			),
-			p.Options.Timeout,
+			p.Options,
 		),
 	)
 }
 
 func (p *Ping) tlsPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewTlsPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout, p.Options.Timeout),
+		NewTlsPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)
 }
 
 func (p *Ping) tcpPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewTcpPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout),
+		NewTcpPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)
 }
 
 func (p *Ping) quicPing(ip net.IP) (int, error) {
 	return p.calc(
-		NewQuicPing(ip, p.Options.Hostname, p.Options.Port, p.Options.Timeout),
+		NewQuicPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)
 }
 

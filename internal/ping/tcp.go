@@ -32,11 +32,11 @@ func (tp *TcpPingResult) String() string {
 }
 
 type TcpPing struct {
-	host    string
-	Port    uint16
-	Timeout time.Duration
+	host string
+	Port uint16
+	ip   net.IP
 
-	ip net.IP
+	opts statute.ScannerOptions
 }
 
 func (tp *TcpPing) SetHost(host string) {
@@ -57,12 +57,8 @@ func (tp *TcpPing) PingContext(ctx context.Context) statute.IPingResult {
 	if ip == nil {
 		return &TcpPingResult{0, fmt.Errorf("no IP specified"), nil}
 	}
-	dialer := &net.Dialer{
-		Timeout:   tp.Timeout,
-		KeepAlive: -1,
-	}
 	t0 := time.Now()
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(tp.Port), 10)))
+	conn, err := tp.opts.RawDialerFunc(ctx, "tcp", net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(tp.Port), 10)))
 	if err != nil {
 		return &TcpPingResult{0, err, nil}
 	}
@@ -70,12 +66,13 @@ func (tp *TcpPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &TcpPingResult{int(time.Since(t0).Milliseconds()), nil, ip}
 }
 
-func NewTcpPing(ip net.IP, host string, port uint16, timeout time.Duration) *TcpPing {
+func NewTcpPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *TcpPing {
 	return &TcpPing{
-		host:    host,
-		Port:    port,
-		Timeout: timeout,
-		ip:      ip,
+		host: host,
+		Port: port,
+		ip:   ip,
+
+		opts: *opts,
 	}
 }
 

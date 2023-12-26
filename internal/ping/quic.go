@@ -2,7 +2,6 @@ package ping
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
@@ -37,13 +36,11 @@ func (h *QuicPingResult) String() string {
 }
 
 type QuicPing struct {
-	Host    string
-	Port    uint16
-	Timeout time.Duration
+	Host string
+	Port uint16
+	IP   net.IP
 
-	Insecure bool
-	ALPN     string
-	IP       net.IP
+	opts statute.ScannerOptions
 }
 
 func (h *QuicPing) Ping() statute.IPingResult {
@@ -57,37 +54,23 @@ func (h *QuicPing) PingContext(ctx context.Context) statute.IPingResult {
 	}
 	addr := net.JoinHostPort(ip.String(), fmt.Sprint(h.Port))
 
-	alpn := http3.NextProtoH3
-	if h.ALPN != "" {
-		alpn = h.ALPN
-	}
-	tlsconf := tls.Config{
-		ServerName:         h.Host,
-		InsecureSkipVerify: h.Insecure,
-		NextProtos:         []string{alpn},
-	}
-	quicconf := quic.Config{
-		HandshakeIdleTimeout: h.Timeout,
-	}
 	t0 := time.Now()
-	conn, err := quic.DialAddr(ctx, addr, &tlsconf, &quicconf)
+	conn, err := h.opts.QuicDialerFunc(ctx, addr, nil, nil)
 	if err != nil {
 		return h.errorResult(err)
 	}
-	closecode := uint64(http3.ErrCodeNoError)
-	if alpn != http3.NextProtoH3 {
-		closecode = 0
-	}
-	defer conn.CloseWithError(quic.ApplicationErrorCode(closecode), "")
+
+	defer conn.CloseWithError(quic.ApplicationErrorCode(uint64(http3.ErrCodeNoError)), "")
 	return &QuicPingResult{int(time.Since(t0).Milliseconds()), nil, ip, uint32(conn.ConnectionState().Version), conn.ConnectionState().TLS.Version}
 }
 
-func NewQuicPing(ip net.IP, host string, port uint16, timeout time.Duration) *QuicPing {
+func NewQuicPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *QuicPing {
 	return &QuicPing{
-		IP:      ip,
-		Host:    host,
-		Port:    port,
-		Timeout: timeout,
+		IP:   ip,
+		Host: host,
+		Port: port,
+
+		opts: *opts,
 	}
 }
 

@@ -2,7 +2,6 @@ package ping
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
@@ -11,15 +10,14 @@ import (
 )
 
 type TlsPingResult struct {
-	ConnectionTime int
-	HandshakeTime  int
-	TLSVersion     uint16
-	Err            error
-	IP             net.IP
+	Time       int
+	TLSVersion uint16
+	Err        error
+	IP         net.IP
 }
 
 func (t *TlsPingResult) Result() int {
-	return t.ConnectionTime + t.HandshakeTime
+	return t.Time
 }
 
 func (t *TlsPingResult) Error() error {
@@ -30,19 +28,16 @@ func (t *TlsPingResult) String() string {
 	if t.Err != nil {
 		return fmt.Sprintf("%s", t.Err)
 	} else {
-		return fmt.Sprintf("%s: protocol=%s, connection=%d ms, handshake=%d ms, time=%d ms", t.IP.String(), statute.TlsVersionToString(t.TLSVersion), t.ConnectionTime, t.HandshakeTime, t.Result())
+		return fmt.Sprintf("%s: protocol=%s, time=%d ms", t.IP.String(), statute.TlsVersionToString(t.TLSVersion), t.Result())
 	}
 }
 
 type TlsPing struct {
-	Host              string
-	Port              uint16
-	ConnectionTimeout time.Duration
-	HandshakeTimeout  time.Duration
+	Host string
+	Port uint16
+	IP   net.IP
 
-	TlsVersion uint16
-	Insecure   bool
-	IP         net.IP
+	opts *statute.ScannerOptions
 }
 
 func (t *TlsPing) Ping() statute.IPingResult {
@@ -56,41 +51,21 @@ func (t *TlsPing) PingContext(ctx context.Context) statute.IPingResult {
 		return t.errorResult(fmt.Errorf("no IP specified"))
 	}
 
-	dialer := &net.Dialer{
-		Timeout:   t.ConnectionTimeout,
-		KeepAlive: -1,
-	}
 	t0 := time.Now()
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(t.Port), 10)))
-	if err != nil {
-		return t.errorResult(err)
-	}
-	defer conn.Close()
-	t1 := time.Now()
-	config := &tls.Config{
-		ServerName:         t.Host,
-		MinVersion:         t.TlsVersion,
-		MaxVersion:         t.TlsVersion,
-		InsecureSkipVerify: t.Insecure,
-	}
-	client := tls.Client(conn, config)
-	client.SetDeadline(time.Now().Add(t.HandshakeTimeout))
-	err = client.Handshake()
+	client, err := t.opts.TLSDialerFunc(ctx, "tcp", net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(t.Port), 10)))
 	if err != nil {
 		return t.errorResult(err)
 	}
 	defer client.Close()
-	t2 := time.Now()
-	return &TlsPingResult{int(t1.Sub(t0).Milliseconds()), int(t2.Sub(t1).Milliseconds()), client.ConnectionState().Version, nil, ip}
+	return &TlsPingResult{int(time.Since(t0).Milliseconds()), t.opts.TlsVersion, nil, ip}
 }
 
-func NewTlsPing(ip net.IP, host string, port uint16, ct, ht time.Duration) *TlsPing {
+func NewTlsPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *TlsPing {
 	return &TlsPing{
-		IP:                ip,
-		Host:              host,
-		Port:              port,
-		ConnectionTimeout: ct,
-		HandshakeTimeout:  ht,
+		IP:   ip,
+		Host: host,
+		Port: port,
+		opts: opts,
 	}
 }
 

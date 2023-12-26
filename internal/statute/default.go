@@ -4,42 +4,117 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/bepass-org/ipscanner/internal/dialer"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"net"
 	"net/http"
 	"time"
 )
 
-func DefaultHTTPClient(rawDialer dialer.TDialerFunc, tlsDialer dialer.TDialerFunc) *http.Client {
-	var defaultDialer dialer.TDialerFunc
+var FinalOptions *ScannerOptions
+
+func DefaultHTTPClientFunc(rawDialer TDialerFunc, tlsDialer TDialerFunc, quicDialer TQuicDialerFunc, targetAddr ...string) *http.Client {
+	var defaultDialer TDialerFunc
 	if rawDialer == nil {
 		defaultDialer = DefaultDialerFunc
 	} else {
 		defaultDialer = rawDialer
 	}
-	var defaultTLSDialer dialer.TDialerFunc
+	var defaultTLSDialer TDialerFunc
 	if rawDialer == nil {
 		defaultTLSDialer = DefaultTLSDialerFunc
 	} else {
 		defaultTLSDialer = tlsDialer
 	}
+	var defaultQuicDialer TQuicDialerFunc
+	if quicDialer == nil {
+		defaultQuicDialer = DefaultQuicDialerFunc
+	} else {
+		defaultQuicDialer = quicDialer
+	}
+
+	var transport http.RoundTripper
+	if FinalOptions.UseHTTP3 {
+		transport = &http3.RoundTripper{
+			DisableCompression: FinalOptions.DisableCompression,
+			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				dest := addr
+				if len(targetAddr) > 0 {
+					dest = targetAddr[0]
+				}
+				return defaultQuicDialer(ctx, dest, tlsCfg, cfg)
+			},
+		}
+	} else {
+		trans := &http.Transport{
+			DialContext:         defaultDialer,
+			DialTLSContext:      defaultTLSDialer,
+			ForceAttemptHTTP2:   FinalOptions.UseHTTP2,
+			DisableCompression:  FinalOptions.DisableCompression,
+			MaxIdleConnsPerHost: -1,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: FinalOptions.InsecureSkipVerify,
+				ServerName:         FinalOptions.Hostname,
+			},
+		}
+		transport = trans
+	}
+
 	return &http.Client{
-		Transport: &http.Transport{
-			DialContext:       defaultDialer,
-			DialTLSContext:    defaultTLSDialer,
-			ForceAttemptHTTP2: false,
+		Transport: transport,
+		Timeout:   FinalOptions.ConnectionTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
-		Timeout: 10 * time.Second,
 	}
 }
 
 func DefaultDialerFunc(_ context.Context, network, addr string) (net.Conn, error) {
 	d := &net.Dialer{
-		Timeout:   5 * time.Second, // Connection timeout
-		KeepAlive: 5 * time.Second, // KeepAlive period
+		Timeout:   FinalOptions.ConnectionTimeout, // Connection timeout
+		KeepAlive: 0,                              // KeepAlive period
 		// Add other custom settings as needed
 	}
 	return d.Dial(network, addr)
+}
+
+func getServerName(address string) (string, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", err // handle the error properly in your real application
+	}
+	return host, nil
+}
+
+func defaultTLSConfig(addr string) *tls.Config {
+	allowInsecure := false
+	sni, err := getServerName(addr)
+	if err != nil {
+		allowInsecure = true
+	}
+
+	if FinalOptions.Hostname != "" {
+		sni = FinalOptions.Hostname
+	}
+
+	alpnProtocols := []string{"http/1.1"}
+
+	// Add protocols based on flags
+	if FinalOptions.UseHTTP3 {
+		alpnProtocols = []string{"http/1.1"} // ALPN token for HTTP/3
+	}
+	if FinalOptions.UseHTTP2 {
+		alpnProtocols = []string{"h2", "http/1.1"} // ALPN token for HTTP/2
+	}
+
+	// Initiate a TLS handshake over the connection
+	return &tls.Config{
+		InsecureSkipVerify: allowInsecure || FinalOptions.InsecureSkipVerify,
+		ServerName:         sni,
+		MinVersion:         FinalOptions.TlsVersion,
+		MaxVersion:         FinalOptions.TlsVersion,
+		NextProtos:         alpnProtocols,
+	}
 }
 
 // DefaultTLSDialerFunc is a custom TLS dialer function
@@ -50,11 +125,13 @@ func DefaultTLSDialerFunc(ctx context.Context, network, addr string) (net.Conn, 
 		return nil, err
 	}
 
-	// Initiate a TLS handshake over the connection
-	tlsConn := tls.Client(rawConn, &tls.Config{
-		ServerName: addr,
-	})
-	err = tlsConn.Handshake()
+	tlsClientConn := tls.Client(rawConn, defaultTLSConfig(addr))
+	err = tlsClientConn.SetDeadline(time.Now().Add(FinalOptions.HandshakeTimeout))
+	if err != nil {
+		return nil, err
+	}
+
+	err = tlsClientConn.Handshake()
 	if err != nil {
 		err := rawConn.Close()
 		if err != nil {
@@ -64,7 +141,15 @@ func DefaultTLSDialerFunc(ctx context.Context, network, addr string) (net.Conn, 
 	}
 
 	// Return the established TLS connection
-	return tlsConn, nil
+	return tlsClientConn, nil
+}
+
+func DefaultQuicDialerFunc(ctx context.Context, addr string, _ *tls.Config, _ *quic.Config) (quic.EarlyConnection, error) {
+	quicConfig := &quic.Config{
+		MaxIdleTimeout:       FinalOptions.ConnectionTimeout,
+		HandshakeIdleTimeout: FinalOptions.HandshakeTimeout,
+	}
+	return quic.DialAddrEarly(ctx, addr, defaultTLSConfig(addr), quicConfig)
 }
 
 // default logger

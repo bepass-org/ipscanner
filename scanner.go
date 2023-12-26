@@ -2,11 +2,10 @@ package ipscanner
 
 import (
 	"context"
-	"github.com/bepass-org/ipscanner/internal/dialer"
+	"crypto/tls"
 	"github.com/bepass-org/ipscanner/internal/engine"
 	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
-	"net/http"
 	"time"
 )
 
@@ -25,20 +24,26 @@ func NewScanner(options ...Option) *IPScanner {
 			CidrList:              statute.DefaultCFRanges,
 			SelectedOps:           statute.HTTPPing | statute.TLSPing | statute.TCPPing | statute.QUICPing,
 			Logger:                statute.DefaultLogger{},
-			Timeout:               1 * time.Minute,
 			InsecureSkipVerify:    true,
-			Dialer:                &dialer.AppDialer{},
-			TLSDialer:             &dialer.AppTLSDialer{},
 			RawDialerFunc:         statute.DefaultDialerFunc,
 			TLSDialerFunc:         statute.DefaultTLSDialerFunc,
-			HttpClient:            statute.DefaultHTTPClient(nil, nil),
+			QuicDialerFunc:        statute.DefaultQuicDialerFunc,
+			HttpClientFunc:        statute.DefaultHTTPClientFunc,
+			UseHTTP3:              false,
+			UseHTTP2:              false,
+			DisableCompression:    false,
 			HTTPPath:              "/",
-			Hostname:              "localhost",
+			Referrer:              "",
+			UserAgent:             "Chrome/80.0.3987.149",
+			Hostname:              "",
 			Port:                  443,
 			IPQueueSize:           8,
 			MaxDesirableRTT:       400,
 			IPQueueTTL:            30 * time.Second,
 			IPQueueChangeCallback: statute.DefaultIPQueueChangeCallback,
+			ConnectionTimeout:     5 * time.Second,
+			HandshakeTimeout:      5 * time.Second,
+			TlsVersion:            tls.VersionTLS12,
 		},
 		logger: statute.DefaultLogger{},
 	}
@@ -64,27 +69,45 @@ func WithUseIPv6(useIPv6 bool) Option {
 	}
 }
 
-func WithDialer(d dialer.TDialerFunc) Option {
+func WithDialer(d statute.TDialerFunc) Option {
 	return func(i *IPScanner) {
 		i.options.RawDialerFunc = d
-		i.options.HttpClient = statute.DefaultHTTPClient(i.options.RawDialerFunc, i.options.TLSDialerFunc)
-		dialer.RawDialFunc = d
-		i.options.Dialer = &dialer.AppDialer{Timeout: i.options.Timeout}
 	}
 }
 
-func WithTLSDialer(t dialer.TDialerFunc) Option {
+func WithTLSDialer(t statute.TDialerFunc) Option {
 	return func(i *IPScanner) {
 		i.options.TLSDialerFunc = t
-		i.options.HttpClient = statute.DefaultHTTPClient(i.options.RawDialerFunc, i.options.TLSDialerFunc)
-		dialer.TLSDialFunc = t
-		i.options.TLSDialer = &dialer.AppTLSDialer{Timeout: i.options.Timeout}
 	}
 }
 
-func WithHttpClient(client *http.Client) Option {
+func WithQuicDialer(q statute.TQuicDialerFunc) Option {
 	return func(i *IPScanner) {
-		i.options.HttpClient = client
+		i.options.QuicDialerFunc = q
+	}
+}
+
+func WithHttpClientFunc(h statute.THTTPClientFunc) Option {
+	return func(i *IPScanner) {
+		i.options.HttpClientFunc = h
+	}
+}
+
+func WithUseHTTP3(useHTTP3 bool) Option {
+	return func(i *IPScanner) {
+		i.options.UseHTTP3 = useHTTP3
+	}
+}
+
+func WithUseHTTP2(useHTTP2 bool) Option {
+	return func(i *IPScanner) {
+		i.options.UseHTTP2 = useHTTP2
+	}
+}
+
+func WithDisableCompression(disableCompression bool) Option {
+	return func(i *IPScanner) {
+		i.options.DisableCompression = disableCompression
 	}
 }
 
@@ -94,15 +117,21 @@ func WithHttpPath(path string) Option {
 	}
 }
 
-func WithLogger(logger statute.Logger) Option {
+func WithReferrer(referrer string) Option {
 	return func(i *IPScanner) {
-		i.options.Logger = logger
+		i.options.Referrer = referrer
 	}
 }
 
-func WithTimeout(timeout time.Duration) Option {
+func WithUserAgent(userAgent string) Option {
 	return func(i *IPScanner) {
-		i.options.Timeout = timeout
+		i.options.UserAgent = userAgent
+	}
+}
+
+func WithLogger(logger statute.Logger) Option {
+	return func(i *IPScanner) {
+		i.options.Logger = logger
 	}
 }
 
@@ -178,6 +207,24 @@ func WithIPQueueChangeCallback(callback statute.TIPQueueChangeCallback) Option {
 	}
 }
 
+func WithConnectionTimeout(timeout time.Duration) Option {
+	return func(i *IPScanner) {
+		i.options.ConnectionTimeout = timeout
+	}
+}
+
+func WithHandshakeTimeout(timeout time.Duration) Option {
+	return func(i *IPScanner) {
+		i.options.HandshakeTimeout = timeout
+	}
+}
+
+func WithTlsVersion(version uint16) Option {
+	return func(i *IPScanner) {
+		i.options.TlsVersion = version
+	}
+}
+
 func (i *IPScanner) SetIPQueueChangeCallback(callback statute.TIPQueueChangeCallback) {
 	i.options.IPQueueChangeCallback = callback
 }
@@ -186,6 +233,7 @@ func (i *IPScanner) SetIPQueueChangeCallback(callback statute.TIPQueueChangeCall
 // cancel all operations
 
 func (i *IPScanner) Run() {
+	statute.FinalOptions = &i.options
 	if !i.options.UseIPv4 && !i.options.UseIPv6 {
 		i.logger.Error("Fatal: both IPv4 and IPv6 are disabled, nothing to do")
 		return
