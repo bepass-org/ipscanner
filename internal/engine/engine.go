@@ -19,7 +19,7 @@ type Engine struct {
 }
 
 func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Engine {
-	queue := NewIPQueue(opts.DesirablePingThreshold, opts.IPBasketSize, opts.BasketTTL)
+	queue := NewIPQueue(opts.DesirablePingThreshold, opts.IPBasketSize, opts.BasketTTL, opts.QueueChangeCallback)
 	var contextToUse context.Context
 	var cancel context.CancelFunc
 
@@ -41,8 +41,8 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 	}
 }
 
-func (e *Engine) GetAvailableIPs() []net.IP {
-	return e.ipQueue.AvailableIPs()
+func (e *Engine) GetAvailableIPs(desc bool) []net.IP {
+	return e.ipQueue.AvailableIPs(desc)
 }
 
 func (e *Engine) Run() {
@@ -64,7 +64,7 @@ func (e *Engine) Run() {
 				for _, ip := range batch {
 					e.Logger.Debug("Pinging IP: %s", ip)
 					if rtt, err := e.ping(ip); err == nil {
-						ipInfo := IPInfo{
+						ipInfo := statute.IPInfo{
 							IP:        ip,
 							RTT:       rtt,
 							CreatedAt: time.Now(),

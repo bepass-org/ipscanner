@@ -9,27 +9,32 @@ import (
 )
 
 type IPQueue struct {
-	queue        []statute.IPInfo
-	maxQueueSize int
-	mu           sync.Mutex
-	available    chan struct{}
-	maxTTL       time.Duration
-	rttThreshold int
-	inIdealMode  bool
-	wg           sync.WaitGroup
+	queue            []statute.IPInfo
+	maxQueueSize     int
+	mu               sync.Mutex
+	available        chan struct{}
+	maxTTL           time.Duration
+	rttThreshold     int
+	inIdealMode      bool
+	wg               sync.WaitGroup
+	onChangeCallback statute.TQueueChangeCallback
 }
 
-func NewIPQueue(rttThreshold, maxQueueSize int, maxTTL time.Duration) *IPQueue {
+func NewIPQueue(rttThreshold, maxQueueSize int, maxTTL time.Duration, onChangeCallback statute.TQueueChangeCallback) *IPQueue {
 	return &IPQueue{
-		queue:        make([]statute.IPInfo, 0),
-		maxQueueSize: maxQueueSize,
-		maxTTL:       maxTTL,
-		rttThreshold: rttThreshold,
-		available:    make(chan struct{}, maxQueueSize),
+		queue:            make([]statute.IPInfo, 0),
+		maxQueueSize:     maxQueueSize,
+		maxTTL:           maxTTL,
+		rttThreshold:     rttThreshold,
+		available:        make(chan struct{}, maxQueueSize),
+		onChangeCallback: onChangeCallback,
 	}
 }
 
 func (q *IPQueue) Enqueue(info statute.IPInfo) bool {
+	defer func() {
+		go q.onChangeCallback(q.queue)
+	}()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -78,6 +83,9 @@ func (q *IPQueue) Enqueue(info statute.IPInfo) bool {
 }
 
 func (q *IPQueue) Dequeue() (statute.IPInfo, bool) {
+	defer func() {
+		go q.onChangeCallback(q.queue)
+	}()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -95,6 +103,9 @@ func (q *IPQueue) Dequeue() (statute.IPInfo, bool) {
 }
 
 func (q *IPQueue) Expire() {
+	defer func() {
+		go q.onChangeCallback(q.queue)
+	}()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -112,7 +123,7 @@ func (q *IPQueue) Expire() {
 	}
 }
 
-func (q *IPQueue) AvailableIPs() []net.IP {
+func (q *IPQueue) AvailableIPs(desc bool) []net.IP {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -120,8 +131,11 @@ func (q *IPQueue) AvailableIPs() []net.IP {
 	sortedQueue := make([]statute.IPInfo, len(q.queue))
 	copy(sortedQueue, q.queue)
 
-	// Sort by RTT ascending
+	// Sort by RTT ascending/descending
 	sort.Slice(sortedQueue, func(i, j int) bool {
+		if desc {
+			return sortedQueue[i].RTT > sortedQueue[j].RTT
+		}
 		return sortedQueue[i].RTT < sortedQueue[j].RTT
 	})
 
