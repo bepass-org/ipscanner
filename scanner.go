@@ -20,23 +20,25 @@ type IPScanner struct {
 func NewScanner(options ...Option) *IPScanner {
 	p := &IPScanner{
 		options: statute.ScannerOptions{
-			UseIPv4:                false,
-			UseIPv6:                false,
-			Timeout:                1 * time.Minute,
-			InsecureSkipVerify:     true,
-			Logger:                 statute.DefaultLogger{},
-			Dialer:                 &dialer.AppDialer{},
-			TLSDialer:              &dialer.AppTLSDialer{},
-			RawDialerFunc:          statute.DefaultDialerFunc,
-			TLSDialerFunc:          statute.DefaultTLSDialerFunc,
-			HttpClient:             statute.DefaultHTTPClient(nil, nil),
-			HTTPPath:               "/",
-			Hostname:               "localhost",
-			Port:                   443,
-			IPBasketSize:           8,
-			DesirablePingThreshold: 400,
-			BasketTTL:              30 * time.Second,
-			QueueChangeCallback:    statute.DefaultQueueChangeCallback,
+			UseIPv4:               true,
+			UseIPv6:               true,
+			CidrList:              statute.DefaultCFRanges,
+			SelectedOps:           statute.HTTPPing | statute.TLSPing | statute.TCPPing | statute.QUICPing,
+			Logger:                statute.DefaultLogger{},
+			Timeout:               1 * time.Minute,
+			InsecureSkipVerify:    true,
+			Dialer:                &dialer.AppDialer{},
+			TLSDialer:             &dialer.AppTLSDialer{},
+			RawDialerFunc:         statute.DefaultDialerFunc,
+			TLSDialerFunc:         statute.DefaultTLSDialerFunc,
+			HttpClient:            statute.DefaultHTTPClient(nil, nil),
+			HTTPPath:              "/",
+			Hostname:              "localhost",
+			Port:                  443,
+			IPQueueSize:           8,
+			MaxDesirableRTT:       400,
+			IPQueueTTL:            30 * time.Second,
+			IPQueueChangeCallback: statute.DefaultIPQueueChangeCallback,
 		},
 		logger: statute.DefaultLogger{},
 	}
@@ -152,38 +154,42 @@ func WithTLSPing() Option {
 	}
 }
 
-func WithIPBasketSize(size int) Option {
+func WithIPQueueSize(size int) Option {
 	return func(i *IPScanner) {
-		i.options.IPBasketSize = size
+		i.options.IPQueueSize = size
 	}
 }
 
-func WithDesirablePingThreshold(threshold int) Option {
+func WithMaxDesirableRTT(threshold int) Option {
 	return func(i *IPScanner) {
-		i.options.DesirablePingThreshold = threshold
+		i.options.MaxDesirableRTT = threshold
 	}
 }
 
-func WithBasketTTL(ttl time.Duration) Option {
+func WithIPQueueTTL(ttl time.Duration) Option {
 	return func(i *IPScanner) {
-		i.options.BasketTTL = ttl
+		i.options.IPQueueTTL = ttl
 	}
 }
 
-func WithQueueChangeCallback(callback statute.TQueueChangeCallback) Option {
+func WithIPQueueChangeCallback(callback statute.TIPQueueChangeCallback) Option {
 	return func(i *IPScanner) {
-		i.options.QueueChangeCallback = callback
+		i.options.IPQueueChangeCallback = callback
 	}
 }
 
-func (i *IPScanner) SetQueueChangeCallback(callback statute.TQueueChangeCallback) {
-	i.options.QueueChangeCallback = callback
+func (i *IPScanner) SetIPQueueChangeCallback(callback statute.TIPQueueChangeCallback) {
+	i.options.IPQueueChangeCallback = callback
 }
 
 // run engine and in case of new event call onChange callback also if it gets canceled with context
 // cancel all operations
 
 func (i *IPScanner) Run() {
+	if !i.options.UseIPv4 && !i.options.UseIPv6 {
+		i.logger.Error("Fatal: both IPv4 and IPv6 are disabled, nothing to do")
+		return
+	}
 	i.engine = engine.NewScannerEngine(&i.options, context.Background())
 	i.engine.Run()
 }

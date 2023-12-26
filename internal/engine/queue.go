@@ -17,17 +17,17 @@ type IPQueue struct {
 	rttThreshold     int
 	inIdealMode      bool
 	wg               sync.WaitGroup
-	onChangeCallback statute.TQueueChangeCallback
+	onChangeCallback statute.TIPQueueChangeCallback
 }
 
-func NewIPQueue(rttThreshold, maxQueueSize int, maxTTL time.Duration, onChangeCallback statute.TQueueChangeCallback) *IPQueue {
+func NewIPQueue(opts *statute.ScannerOptions) *IPQueue {
 	return &IPQueue{
 		queue:            make([]statute.IPInfo, 0),
-		maxQueueSize:     maxQueueSize,
-		maxTTL:           maxTTL,
-		rttThreshold:     rttThreshold,
-		available:        make(chan struct{}, maxQueueSize),
-		onChangeCallback: onChangeCallback,
+		maxQueueSize:     opts.IPQueueSize,
+		maxTTL:           opts.IPQueueTTL,
+		rttThreshold:     opts.MaxDesirableRTT,
+		available:        make(chan struct{}, opts.IPQueueSize),
+		onChangeCallback: opts.IPQueueChangeCallback,
 	}
 }
 

@@ -3,8 +3,10 @@ package iterator
 import (
 	"fmt"
 	"github.com/bepass-org/ipscanner/internal/blackrock"
+	"github.com/bepass-org/ipscanner/internal/statute"
 	"math/big"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -95,9 +97,15 @@ func (g *IpGenerator) NextBatch() ([]net.IP, error) {
 	return results, nil
 }
 
-func NewIterator(cidrs []string) *IpGenerator {
+func NewIterator(opts *statute.ScannerOptions) *IpGenerator {
 	var ranges []ipRange
-	for _, cidr := range cidrs {
+	for _, cidr := range opts.CidrList {
+		if !opts.UseIPv6 && strings.Contains(cidr, ":") {
+			continue
+		}
+		if !opts.UseIPv4 && strings.Contains(cidr, ".") {
+			continue
+		}
 		ipRange, err := newIPRange(cidr)
 		if err != nil {
 			fmt.Printf("Error parsing CIDR %s: %v\n", cidr, err)
@@ -105,7 +113,10 @@ func NewIterator(cidrs []string) *IpGenerator {
 		}
 		ranges = append(ranges, ipRange)
 	}
-
+	if len(ranges) == 0 {
+		fmt.Println("No valid CIDR ranges found")
+		return nil
+	}
 	return &IpGenerator{
 		ipRanges: ranges,
 	}

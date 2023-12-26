@@ -19,7 +19,7 @@ type Engine struct {
 }
 
 func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Engine {
-	queue := NewIPQueue(opts.DesirablePingThreshold, opts.IPBasketSize, opts.BasketTTL, opts.QueueChangeCallback)
+	queue := NewIPQueue(opts)
 	var contextToUse context.Context
 	var cancel context.CancelFunc
 
@@ -36,7 +36,7 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 		ctx:        contextToUse,
 		cancelFunc: cancel,
 		ping:       p.DoPing,
-		generator:  iterator.NewIterator(opts.CidrList),
+		generator:  iterator.NewIterator(opts),
 		Logger:     opts.Logger,
 	}
 }

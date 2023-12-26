@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type TQueueChangeCallback func(ips []IPInfo)
+type TIPQueueChangeCallback func(ips []IPInfo)
 
 var HTTPPing = 1 << 0
 var TLSPing = 1 << 1
@@ -21,23 +21,23 @@ type IPInfo struct {
 }
 
 type ScannerOptions struct {
-	UseIPv4                bool
-	UseIPv6                bool
-	CidrList               []string // CIDR ranges to scan
-	SelectedOps            int
-	Logger                 Logger
-	Timeout                time.Duration
-	InsecureSkipVerify     bool
-	Dialer                 *dialer.AppDialer
-	TLSDialer              *dialer.AppTLSDialer
-	RawDialerFunc          dialer.TDialerFunc
-	TLSDialerFunc          dialer.TDialerFunc
-	HttpClient             *http.Client
-	HTTPPath               string
-	Hostname               string
-	Port                   uint16
-	IPBasketSize           int
-	BasketTTL              time.Duration
-	DesirablePingThreshold int
-	QueueChangeCallback    TQueueChangeCallback
+	UseIPv4               bool
+	UseIPv6               bool
+	CidrList              []string // CIDR ranges to scan
+	SelectedOps           int
+	Logger                Logger
+	Timeout               time.Duration
+	InsecureSkipVerify    bool
+	Dialer                *dialer.AppDialer
+	TLSDialer             *dialer.AppTLSDialer
+	RawDialerFunc         dialer.TDialerFunc
+	TLSDialerFunc         dialer.TDialerFunc
+	HttpClient            *http.Client
+	HTTPPath              string
+	Hostname              string
+	Port                  uint16
+	IPQueueSize           int
+	IPQueueTTL            time.Duration
+	MaxDesirableRTT       int
+	IPQueueChangeCallback TIPQueueChangeCallback
 }

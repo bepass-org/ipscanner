@@ -6,7 +6,7 @@ IPScanner is a Go package designed for scanning and analyzing IP addresses. It u
 - IPv4 and IPv6 support.
 - Customizable timeout and dialer options.
 - Extendable with various ping methods (HTTP, QUIC, TCP, TLS).
-- Adjustable IP basket size for scan optimization.
+- Adjustable IP Queue size for scan optimization.
 
 ## Getting Started
 To use IPScanner, simply import the package and initialize a new scanner with your desired options.
@@ -27,7 +27,7 @@ You can customize your scanner with several options:
 - `WithUseIPv4` and `WithUseIPv6` to specify IP versions.
 - `WithDialer` and `WithTLSDialer` to define custom dialing functions.
 - `WithTimeout` to set the scan timeout.
-- `WithIPBasketSize` to set the IP basket size.
+- `WithIPQueueSize` to set the IP Queue size.
 - `WithPingMethod` to set the ping method, it can be HTTP, QUIC, TCP, TLS at the same time.
 - Various other options for detailed scan control.
 
