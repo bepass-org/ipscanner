@@ -16,11 +16,13 @@ type IPQueue struct {
 	maxTTL           time.Duration
 	rttThreshold     int
 	inIdealMode      bool
-	wg               sync.WaitGroup
 	onChangeCallback statute.TIPQueueChangeCallback
+	logger           statute.Logger
+	reserved         statute.IPInfQueue
 }
 
 func NewIPQueue(opts *statute.ScannerOptions) *IPQueue {
+	var reserved statute.IPInfQueue
 	return &IPQueue{
 		queue:            make([]statute.IPInfo, 0),
 		maxQueueSize:     opts.IPQueueSize,
@@ -28,50 +30,53 @@ func NewIPQueue(opts *statute.ScannerOptions) *IPQueue {
 		rttThreshold:     opts.MaxDesirableRTT,
 		available:        make(chan struct{}, opts.IPQueueSize),
 		onChangeCallback: opts.IPQueueChangeCallback,
+		logger:           opts.Logger,
+		reserved:         reserved,
 	}
 }
 
 func (q *IPQueue) Enqueue(info statute.IPInfo) bool {
-	defer func() {
-		go q.onChangeCallback(q.queue)
-	}()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Sort the queue every time when a new item is being enqueued to maintain order
+	defer func() {
+		q.onChangeCallback(q.queue)
+	}()
+
+	q.logger.Debug("Enqueue: Sorting queue by RTT")
 	sort.Slice(q.queue, func(i, j int) bool {
 		return q.queue[i].RTT < q.queue[j].RTT
 	})
 
 	if len(q.queue) == 0 {
-		// If the queue is empty, add the item immediately.
+		q.logger.Debug("Enqueue: empty queue adding first available item")
 		q.queue = append(q.queue, info)
-		q.available <- struct{}{}
-		q.wg.Add(1)
 		return false
 	}
 
-	// Check if the new item's RTT is less than at least one of the members.
-	if info.RTT < q.queue[len(q.queue)-1].RTT {
-		if len(q.queue) >= q.maxQueueSize {
-			// If the queue is full, remove the item with the highest RTT.
+	if info.RTT <= q.rttThreshold {
+		q.logger.Debug("Enqueue: the new item's RTT is less than at least one of the members.")
+		if len(q.queue) >= q.maxQueueSize && info.RTT < q.queue[len(q.queue)-1].RTT {
+			q.logger.Debug("Enqueue: the queue is full, remove the item with the highest RTT.")
 			q.queue = q.queue[:len(q.queue)-1]
+		} else if len(q.queue) < q.maxQueueSize {
+			q.logger.Debug("Enqueue: Insert the new item in a sorted position.")
+			index := sort.Search(len(q.queue), func(i int) bool { return q.queue[i].RTT > info.RTT })
+			q.queue = append(q.queue[:index], append([]statute.IPInfo{info}, q.queue[index:]...)...)
+		} else {
+			q.logger.Debug("Enqueue: The Queue is full but we keep the new item in the reserved queue.")
+			q.reserved.Enqueue(info)
 		}
-
-		// Insert the new item in a sorted position.
-		index := sort.Search(len(q.queue), func(i int) bool { return q.queue[i].RTT > info.RTT })
-		q.queue = append(q.queue[:index], append([]statute.IPInfo{info}, q.queue[index:]...)...)
-
-		q.available <- struct{}{}
-		q.wg.Add(1)
 	}
 
+	q.logger.Debug("Enqueue: Checking if any member has a higher RTT than the threshold.")
 	for _, member := range q.queue {
 		if member.RTT > q.rttThreshold {
 			return false // If any member has a higher RTT than the threshold, return false.
 		}
 	}
 
+	q.logger.Debug("Enqueue: All members have an RTT lower than the threshold.")
 	if len(q.queue) < q.maxQueueSize {
 		// the queue isn't full dont wait
 		return false
@@ -79,6 +84,7 @@ func (q *IPQueue) Enqueue(info statute.IPInfo) bool {
 
 	q.inIdealMode = true
 	// ok wait for expiration signal
+	q.logger.Debug("Enqueue: All members have an RTT lower than the threshold. Waiting for expiration signal.")
 	return true
 }
 
@@ -96,30 +102,43 @@ func (q *IPQueue) Dequeue() (statute.IPInfo, bool) {
 	info := q.queue[len(q.queue)-1]
 	q.queue = q.queue[0 : len(q.queue)-1]
 
-	<-q.available
-	q.wg.Done()
+	q.available <- struct{}{}
 
 	return info, true
 }
 
 func (q *IPQueue) Expire() {
-	defer func() {
-		go q.onChangeCallback(q.queue)
-	}()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	if !q.inIdealMode {
-		// if we are not in ideal mode, we don't need to expire
+		q.logger.Debug("Expire: Not in ideal mode")
+		q.available <- struct{}{}
 		return
 	}
 
+	q.logger.Debug("Expire: In ideal mode")
+	defer func() {
+		q.onChangeCallback(q.queue)
+	}()
+
+	shouldStartNewScan := false
+	resQ := make([]statute.IPInfo, 0)
 	for i := 0; i < len(q.queue); i++ {
 		if time.Since(q.queue[i].CreatedAt) > q.maxTTL {
-			q.queue = append(q.queue[:i], q.queue[i+1:]...)
-			i--
-			q.wg.Done() // Release a slot in wait group
+			q.logger.Debug("Expire: Removing expired item from queue")
+			shouldStartNewScan = true
+		} else {
+			resQ = append(resQ, q.queue[i])
 		}
+	}
+	q.queue = resQ
+	q.logger.Debug("Expire: Adding reserved items to queue")
+	for i := 0; i < q.maxQueueSize && i < q.reserved.Size(); i++ {
+		q.queue = append(q.queue, q.reserved.Dequeue())
+	}
+	if shouldStartNewScan {
+		q.available <- struct{}{}
 	}
 }
 

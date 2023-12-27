@@ -69,13 +69,13 @@ func DefaultHTTPClientFunc(rawDialer TDialerFunc, tlsDialer TDialerFunc, quicDia
 	}
 }
 
-func DefaultDialerFunc(_ context.Context, network, addr string) (net.Conn, error) {
+func DefaultDialerFunc(ctx context.Context, network, addr string) (net.Conn, error) {
+	fmt.Println(addr)
 	d := &net.Dialer{
-		Timeout:   FinalOptions.ConnectionTimeout, // Connection timeout
-		KeepAlive: 0,                              // KeepAlive period
+		Timeout: FinalOptions.ConnectionTimeout, // Connection timeout
 		// Add other custom settings as needed
 	}
-	return d.Dial(network, addr)
+	return d.DialContext(ctx, network, addr)
 }
 
 func getServerName(address string) (string, error) {
@@ -125,7 +125,17 @@ func DefaultTLSDialerFunc(ctx context.Context, network, addr string) (net.Conn, 
 		return nil, err
 	}
 
+	// Ensure the raw connection is closed in case of an error after this point
+	defer func() {
+		if err != nil {
+			_ = rawConn.Close()
+		}
+	}()
+
+	// Prepare the TLS client connection
 	tlsClientConn := tls.Client(rawConn, defaultTLSConfig(addr))
+
+	// Perform the handshake with a timeout
 	err = tlsClientConn.SetDeadline(time.Now().Add(FinalOptions.HandshakeTimeout))
 	if err != nil {
 		return nil, err
@@ -133,14 +143,18 @@ func DefaultTLSDialerFunc(ctx context.Context, network, addr string) (net.Conn, 
 
 	err = tlsClientConn.Handshake()
 	if err != nil {
-		err := rawConn.Close()
-		if err != nil {
-			return nil, err
-		}
+		return nil, err // rawConn will be closed by the deferred function
+	}
+
+	// Reset the deadline for future I/O operations
+	err = tlsClientConn.SetDeadline(time.Time{})
+	if err != nil {
 		return nil, err
 	}
 
 	// Return the established TLS connection
+	// Cancel the deferred closure of rawConn since everything succeeded
+	err = nil
 	return tlsClientConn, nil
 }
 
