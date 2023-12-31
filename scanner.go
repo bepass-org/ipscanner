@@ -3,10 +3,11 @@ package ipscanner
 import (
 	"context"
 	"crypto/tls"
-	"github.com/bepass-org/ipscanner/internal/engine"
-	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
 	"time"
+
+	"github.com/bepass-org/ipscanner/internal/engine"
+	"github.com/bepass-org/ipscanner/internal/statute"
 )
 
 type IPScanner struct {
@@ -241,3 +242,5 @@ func (i *IPScanner) Run() {
 	i.engine = engine.NewScannerEngine(&i.options, context.Background())
 	i.engine.Run()
 }
+
+type IPInfo = statute.IPInfo
