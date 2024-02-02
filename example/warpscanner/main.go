@@ -21,15 +21,15 @@ func canConnectIPv6(remoteAddr string) bool {
 	return true
 }
 
-func main() {
+func RunScan(privKey, pubKey string) (result []string) {
 	// new scanner
 	scanner := ipscanner.NewScanner(
 		ipscanner.WithWarpPing(),
-		ipscanner.WithWarpPrivateKey("yGXeX7gMyUIZmK5QIgC7+XX5USUSskQvBYiQ6LdkiXI="),
-		ipscanner.WithWarpPeerPublicKey("bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
+		ipscanner.WithWarpPrivateKey(privKey),
+		ipscanner.WithWarpPeerPublicKey(pubKey),
 		ipscanner.WithUseIPv6(canConnectIPv6("[2001:4860:4860::8888]:80")),
 		ipscanner.WithUseIPv4(true),
-		ipscanner.WithMaxDesirableRTT(2000),
+		ipscanner.WithMaxDesirableRTT(500),
 		ipscanner.WithCidrList([]string{
 			"162.159.192.0/24",
 			"162.159.193.0/24",
@@ -52,12 +52,14 @@ func main() {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	var result []string
 	for i := 0; i < 2; i++ {
 		result = append(result, ipToAddress(ipList[i]))
 	}
-	fmt.Println(result)
-	time.Sleep(15 * time.Second)
+	return
+}
+
+func main() {
+	fmt.Println(RunScan("yGXeX7gMyUIZmK5QIgC7+XX5USUSskQvBYiQ6LdkiXI=", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="))
 }
 
 func ipToAddress(ip net.IP) string {
