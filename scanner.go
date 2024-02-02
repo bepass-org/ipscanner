@@ -2,10 +2,11 @@ package ipscanner
 
 import (
 	"crypto/tls"
-	"github.com/bepass-org/ipscanner/internal/engine"
-	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
 	"time"
+
+	"github.com/bepass-org/ipscanner/internal/engine"
+	"github.com/bepass-org/ipscanner/internal/statute"
 )
 
 type IPScanner struct {
@@ -278,3 +279,5 @@ func (i *IPScanner) GetAvailableIPS() []net.IP {
 	}
 	return nil
 }
+
+type IPInfo = statute.IPInfo
