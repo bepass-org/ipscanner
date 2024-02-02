@@ -1,7 +1,6 @@
 package ipscanner
 
 import (
-	"context"
 	"crypto/tls"
 	"github.com/bepass-org/ipscanner/internal/engine"
 	"github.com/bepass-org/ipscanner/internal/statute"
@@ -22,7 +21,7 @@ func NewScanner(options ...Option) *IPScanner {
 			UseIPv4:               true,
 			UseIPv6:               true,
 			CidrList:              statute.DefaultCFRanges,
-			SelectedOps:           statute.TCPPing,
+			SelectedOps:           0,
 			Logger:                statute.DefaultLogger{},
 			InsecureSkipVerify:    true,
 			RawDialerFunc:         statute.DefaultDialerFunc,
@@ -36,6 +35,9 @@ func NewScanner(options ...Option) *IPScanner {
 			Referrer:              "",
 			UserAgent:             "Chrome/80.0.3987.149",
 			Hostname:              "www.cloudflare.com",
+			WarpPresharedKey:      "",
+			WarpPeerPublicKey:     "",
+			WarpPrivateKey:        "",
 			Port:                  443,
 			IPQueueSize:           8,
 			MaxDesirableRTT:       400,
@@ -165,6 +167,12 @@ func WithHTTPPing() Option {
 	}
 }
 
+func WithWarpPing() Option {
+	return func(i *IPScanner) {
+		i.options.SelectedOps |= statute.WARPPing
+	}
+}
+
 func WithQUICPing() Option {
 	return func(i *IPScanner) {
 		i.options.SelectedOps |= statute.QUICPing
@@ -225,6 +233,24 @@ func WithTlsVersion(version uint16) Option {
 	}
 }
 
+func WithWarpPrivateKey(privateKey string) Option {
+	return func(i *IPScanner) {
+		i.options.WarpPrivateKey = privateKey
+	}
+}
+
+func WithWarpPeerPublicKey(peerPublicKey string) Option {
+	return func(i *IPScanner) {
+		i.options.WarpPeerPublicKey = peerPublicKey
+	}
+}
+
+func WithWarpPreSharedKey(presharedKey string) Option {
+	return func(i *IPScanner) {
+		i.options.WarpPresharedKey = presharedKey
+	}
+}
+
 func (i *IPScanner) SetIPQueueChangeCallback(callback statute.TIPQueueChangeCallback) {
 	i.options.IPQueueChangeCallback = callback
 }
@@ -238,6 +264,17 @@ func (i *IPScanner) Run() {
 		i.logger.Error("Fatal: both IPv4 and IPv6 are disabled, nothing to do")
 		return
 	}
-	i.engine = engine.NewScannerEngine(&i.options, context.Background())
-	i.engine.Run()
+	i.engine = engine.NewScannerEngine(&i.options)
+	go i.engine.Run()
+}
+
+func (i *IPScanner) Stop() {
+	i.engine.Cancel()
+}
+
+func (i *IPScanner) GetAvailableIPS() []net.IP {
+	if i.engine != nil {
+		return i.engine.GetAvailableIPs(false)
+	}
+	return nil
 }

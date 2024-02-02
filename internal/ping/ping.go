@@ -46,6 +46,14 @@ func (p *Ping) DoPing(ip net.IP) (int, error) {
 		ops++
 		sum += tp
 	}
+	if p.Options.SelectedOps&statute.WARPPing > 0 {
+		tp, err = p.warpPing(ip)
+		if err != nil {
+			return 0, err
+		}
+		ops++
+		sum += tp
+	}
 	if ops == 0 {
 		return 99, nil
 	}
@@ -63,6 +71,15 @@ func (p *Ping) httpPing(ip net.IP) (int, error) {
 				p.Options.Port,
 				p.Options.HTTPPath,
 			),
+			p.Options,
+		),
+	)
+}
+
+func (p *Ping) warpPing(ip net.IP) (int, error) {
+	return p.calc(
+		NewWarpPing(
+			ip,
 			p.Options,
 		),
 	)

@@ -1,9 +1,11 @@
 package iterator
 
 import (
+	"crypto/rand"
 	"fmt"
 	"github.com/bepass-org/ipscanner/internal/blackrock"
 	"github.com/bepass-org/ipscanner/internal/statute"
+	"log"
 	"math/big"
 	"net"
 	"strings"
@@ -57,10 +59,11 @@ func addIP(ip net.IP, num uint64) net.IP {
 	return bigIntToIP(ipInt)
 }
 
-// Function to calculate the number of IP addresses in a CIDR range
 func ipRangeSize(ipNet *net.IPNet) uint64 {
 	ones, bits := ipNet.Mask.Size()
-	return 1 << uint(bits-ones)
+	size := big.NewInt(1)
+	size.Lsh(size, uint(bits-ones))
+	return size.Uint64()
 }
 
 type IpGenerator struct {
@@ -97,6 +100,84 @@ func (g *IpGenerator) NextBatch() ([]net.IP, error) {
 	return results, nil
 }
 
+// Helper function to split the CIDR into smaller subnets if necessary
+func splitCIDR(cidr string) ([]string, error) {
+	if strings.Contains(cidr, ".") {
+		// if ip4
+		return []string{cidr}, nil
+	}
+
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	ones, _ := ipnet.Mask.Size()
+
+	if ones >= 65 {
+		return []string{cidr}, nil
+	}
+
+	additionalBits := 65 - ones
+	subnetCount := 1 << additionalBits
+	subnets := make([]string, 0, subnetCount)
+
+	startIP := new(big.Int).SetBytes(ip.To16())
+
+	for i := 0; i < subnetCount; i++ {
+		offset := new(big.Int).Lsh(big.NewInt(int64(i)), uint(additionalBits))
+		subnetStartIP := new(big.Int).Add(startIP, offset)
+		paddedIPBytes := padIPv6Address(subnetStartIP.Bytes())
+
+		subnet := &net.IPNet{
+			IP:   paddedIPBytes,
+			Mask: net.CIDRMask(65, 128),
+		}
+		subnets = append(subnets, subnet.String())
+	}
+
+	err = shuffleSubnets(subnets)
+	if err != nil {
+		return nil, err
+	}
+
+	return subnets, nil
+}
+
+func padIPv6Address(ip []byte) []byte {
+	paddedIP := make([]byte, 16)
+	copy(paddedIP[16-len(ip):], ip)
+	return paddedIP
+}
+
+// shuffleSubnets shuffles a slice of strings using crypto/rand
+func shuffleSubnets(subnets []string) error {
+	for i := range subnets {
+		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(subnets))))
+		if err != nil {
+			return err
+		}
+		j := jBig.Int64()
+
+		subnets[i], subnets[j] = subnets[j], subnets[i]
+	}
+	return nil
+}
+
+// shuffleSubnets shuffles a slice of strings using crypto/rand
+func shuffleSubnetsIpRange(subnets []ipRange) error {
+	for i := range subnets {
+		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(subnets))))
+		if err != nil {
+			return err
+		}
+		j := jBig.Int64()
+
+		subnets[i], subnets[j] = subnets[j], subnets[i]
+	}
+	return nil
+}
+
 func NewIterator(opts *statute.ScannerOptions) *IpGenerator {
 	var ranges []ipRange
 	for _, cidr := range opts.CidrList {
@@ -106,15 +187,28 @@ func NewIterator(opts *statute.ScannerOptions) *IpGenerator {
 		if !opts.UseIPv4 && strings.Contains(cidr, ".") {
 			continue
 		}
-		ipRange, err := newIPRange(cidr)
+
+		subnets, err := splitCIDR(cidr)
 		if err != nil {
-			fmt.Printf("Error parsing CIDR %s: %v\n", cidr, err)
+			fmt.Printf("Error splitting CIDR %s: %v\n", cidr, err)
 			continue
 		}
-		ranges = append(ranges, ipRange)
+
+		for _, subnet := range subnets {
+			ipRange, err := newIPRange(subnet) // Assuming newIPRange is defined elsewhere
+			if err != nil {
+				fmt.Printf("Error parsing CIDR %s: %v\n", subnet, err)
+				continue
+			}
+			ranges = append(ranges, ipRange)
+		}
 	}
 	if len(ranges) == 0 {
-		fmt.Println("No valid CIDR ranges found")
+		log.Fatal("No valid CIDR ranges found")
+	}
+	err := shuffleSubnetsIpRange(ranges)
+	if err != nil {
+		fmt.Println(err)
 		return nil
 	}
 	return &IpGenerator{

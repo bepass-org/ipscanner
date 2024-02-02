@@ -44,7 +44,10 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 }
 
 func (e *Engine) GetAvailableIPs(desc bool) []net.IP {
-	return e.ipQueue.AvailableIPs(desc)
+	if e.ipQueue != nil {
+		return e.ipQueue.AvailableIPs(desc)
+	}
+	return nil
 }
 
 func (e *Engine) Run() {
@@ -63,22 +66,28 @@ func (e *Engine) Run() {
 				continue
 			}
 			for _, ip := range batch {
-				e.Logger.Debug("Pinging IP: %s", ip)
-				if rtt, err := e.ping(ip); err == nil {
-					ipInfo := statute.IPInfo{
-						IP:        ip,
-						RTT:       rtt,
-						CreatedAt: time.Now(),
+				select {
+				case <-e.ctx.Done():
+					fmt.Println("Context Done!")
+					return
+				default:
+					e.Logger.Debug("Pinging IP: %s", ip)
+					if rtt, err := e.ping(ip); err == nil {
+						ipInfo := statute.IPInfo{
+							IP:        ip,
+							RTT:       rtt,
+							CreatedAt: time.Now(),
+						}
+						e.Logger.Debug("IP: %s, RTT: %d", ip, rtt)
+						e.ipQueue.Enqueue(ipInfo)
+					} else if err != nil {
+						// if timeout error
+						if strings.Contains(err.Error(), ": i/o timeout") {
+							e.Logger.Debug("Timeout Error: %s", ip)
+							continue
+						}
+						e.Logger.Error("Error while pinging IP: %s, Error: %v", ip, err)
 					}
-					e.Logger.Debug("IP: %s, RTT: %d", ip, rtt)
-					e.ipQueue.Enqueue(ipInfo)
-				} else if err != nil {
-					// if timeout error
-					if strings.Contains(err.Error(), ": i/o timeout") {
-						e.Logger.Debug("Timeout Error: %s", ip)
-						continue
-					}
-					e.Logger.Error("Error while pinging IP: %s, Error: %v", ip, err)
 				}
 			}
 		default:
