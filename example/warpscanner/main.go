@@ -27,7 +27,7 @@ func RunScan(privKey, pubKey string) (result []string) {
 		ipscanner.WithWarpPing(),
 		ipscanner.WithWarpPrivateKey(privKey),
 		ipscanner.WithWarpPeerPublicKey(pubKey),
-		ipscanner.WithUseIPv6(false),
+		ipscanner.WithUseIPv6(canConnectIPv6("[2001:4860:4860::8888]:80")),
 		ipscanner.WithUseIPv4(true),
 		ipscanner.WithMaxDesirableRTT(500),
 		ipscanner.WithCidrList([]string{

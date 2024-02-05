@@ -6,8 +6,7 @@ func main() {
 	// new scanner
 	scanner := ipscanner.NewScanner(
 		ipscanner.WithHTTPPing(),
-		// TODO: fix blackrock for 128 bit
-		ipscanner.WithUseIPv6(false),
+		ipscanner.WithUseIPv6(canConnectIPv6("[2001:4860:4860::8888]:80")),
 	)
 	go scanner.Run()
 	select {}
