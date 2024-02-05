@@ -3,22 +3,95 @@ package iterator
 import (
 	"crypto/rand"
 	"fmt"
-	"github.com/bepass-org/ipscanner/internal/blackrock"
 	"github.com/bepass-org/ipscanner/internal/statute"
 	"log"
 	"math/big"
 	"net"
 	"strings"
-	"time"
 )
+
+// LCG represents a linear congruential generator with full period.
+type LCG struct {
+	modulus    *big.Int
+	multiplier *big.Int
+	increment  *big.Int
+	current    *big.Int
+}
+
+// NewLCG creates a new LCG instance with a given size.
+func NewLCG(size *big.Int) *LCG {
+	modulus := new(big.Int).Set(size)
+
+	// Generate random multiplier (a) and increment (c) that satisfy Hull-Dobell Theorem
+	var multiplier, increment *big.Int
+	for {
+		var err error
+		multiplier, err = rand.Int(rand.Reader, modulus)
+		if err != nil {
+			continue
+		}
+		increment, err = rand.Int(rand.Reader, modulus)
+		if err != nil {
+			continue
+		}
+
+		// Check Hull-Dobell Theorem conditions
+		if checkHullDobell(modulus, multiplier, increment) {
+			break
+		}
+	}
+
+	return &LCG{
+		modulus:    modulus,
+		multiplier: multiplier,
+		increment:  increment,
+		current:    big.NewInt(0),
+	}
+}
+
+// checkHullDobell checks if the given parameters satisfy the Hull-Dobell Theorem.
+func checkHullDobell(modulus, multiplier, increment *big.Int) bool {
+	// c and m are relatively prime
+	gcd := new(big.Int).GCD(nil, nil, increment, modulus)
+	if gcd.Cmp(big.NewInt(1)) != 0 {
+		return false
+	}
+
+	// a - 1 is divisible by all prime factors of m
+	aMinusOne := new(big.Int).Sub(multiplier, big.NewInt(1))
+
+	// a - 1 is divisible by 4 if m is divisible by 4
+	if new(big.Int).And(modulus, big.NewInt(3)).Cmp(big.NewInt(0)) == 0 {
+		if new(big.Int).And(aMinusOne, big.NewInt(3)).Cmp(big.NewInt(0)) != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Next generates the next number in the sequence.
+func (lcg *LCG) Next() *big.Int {
+	if lcg.current.Cmp(lcg.modulus) == 0 {
+		return nil // Sequence complete
+	}
+
+	next := new(big.Int)
+	next.Mul(lcg.multiplier, lcg.current)
+	next.Add(next, lcg.increment)
+	next.Mod(next, lcg.modulus)
+
+	lcg.current.Set(next)
+	return next
+}
 
 type ipRange struct {
 	ipNet *net.IPNet
-	br    *blackrock.Blackrock
+	lcg   *LCG
 	start net.IP
 	stop  net.IP
-	size  uint64
-	index uint64
+	size  *big.Int
+	index *big.Int
 }
 
 func newIPRange(cidr string) (ipRange, error) {
@@ -26,13 +99,14 @@ func newIPRange(cidr string) (ipRange, error) {
 	if err != nil {
 		return ipRange{}, err
 	}
+	size := ipRangeSize(ipNet)
 	return ipRange{
 		ipNet: ipNet,
 		start: ipNet.IP,
 		stop:  lastIP(ipNet),
-		size:  ipRangeSize(ipNet),
-		index: 0,
-		br:    blackrock.New(ipRangeSize(ipNet), blackrock.DefaultRounds, time.Now().UnixNano()),
+		size:  size,
+		index: big.NewInt(0),
+		lcg:   NewLCG(size),
 	}, nil
 }
 
@@ -50,20 +124,20 @@ func ipToBigInt(ip net.IP) *big.Int {
 }
 
 func bigIntToIP(n *big.Int) net.IP {
-	return n.Bytes()
+	return net.IP(n.Bytes())
 }
 
-func addIP(ip net.IP, num uint64) net.IP {
+func addIP(ip net.IP, num *big.Int) net.IP {
 	ipInt := ipToBigInt(ip)
-	ipInt.Add(ipInt, big.NewInt(int64(num)))
+	ipInt.Add(ipInt, num)
 	return bigIntToIP(ipInt)
 }
 
-func ipRangeSize(ipNet *net.IPNet) uint64 {
+func ipRangeSize(ipNet *net.IPNet) *big.Int {
 	ones, bits := ipNet.Mask.Size()
 	size := big.NewInt(1)
 	size.Lsh(size, uint(bits-ones))
-	return size.Uint64()
+	return size
 }
 
 type IpGenerator struct {
@@ -73,24 +147,28 @@ type IpGenerator struct {
 func (g *IpGenerator) NextBatch() ([]net.IP, error) {
 	var results []net.IP
 	for i, r := range g.ipRanges {
-		if r.index >= r.size {
+		if r.index.Cmp(r.size) >= 0 {
 			continue
 		}
-		results = append(results, addIP(r.start, r.br.Shuffle(r.index)))
-		g.ipRanges[i].index++
+		shuffleIndex := r.lcg.Next()
+		if shuffleIndex == nil {
+			continue
+		}
+		results = append(results, addIP(r.start, shuffleIndex))
+		g.ipRanges[i].index.Add(g.ipRanges[i].index, big.NewInt(1))
 	}
 	if len(results) == 0 {
 		okFlag := false
 		for i := range g.ipRanges {
-			if g.ipRanges[i].index > 0 {
+			if g.ipRanges[i].index.Cmp(big.NewInt(0)) > 0 {
 				okFlag = true
 			}
-			g.ipRanges[i].index = 0
+			g.ipRanges[i].index.SetInt64(0)
 		}
 		if okFlag {
-			// reshuffle and start over
+			// Reshuffle and start over
 			for i := range g.ipRanges {
-				g.ipRanges[i].br = blackrock.New(ipRangeSize(g.ipRanges[i].ipNet), blackrock.DefaultRounds, time.Now().UnixNano())
+				g.ipRanges[i].lcg = NewLCG(g.ipRanges[i].size)
 			}
 			return g.NextBatch()
 		} else {
@@ -100,71 +178,7 @@ func (g *IpGenerator) NextBatch() ([]net.IP, error) {
 	return results, nil
 }
 
-// Helper function to split the CIDR into smaller subnets if necessary
-func splitCIDR(cidr string) ([]string, error) {
-	if strings.Contains(cidr, ".") {
-		// if ip4
-		return []string{cidr}, nil
-	}
-
-	ip, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, err
-	}
-
-	ones, _ := ipnet.Mask.Size()
-
-	if ones >= 65 {
-		return []string{cidr}, nil
-	}
-
-	additionalBits := 65 - ones
-	subnetCount := 1 << additionalBits
-	subnets := make([]string, 0, subnetCount)
-
-	startIP := new(big.Int).SetBytes(ip.To16())
-
-	for i := 0; i < subnetCount; i++ {
-		offset := new(big.Int).Lsh(big.NewInt(int64(i)), uint(additionalBits))
-		subnetStartIP := new(big.Int).Add(startIP, offset)
-		paddedIPBytes := padIPv6Address(subnetStartIP.Bytes())
-
-		subnet := &net.IPNet{
-			IP:   paddedIPBytes,
-			Mask: net.CIDRMask(65, 128),
-		}
-		subnets = append(subnets, subnet.String())
-	}
-
-	err = shuffleSubnets(subnets)
-	if err != nil {
-		return nil, err
-	}
-
-	return subnets, nil
-}
-
-func padIPv6Address(ip []byte) []byte {
-	paddedIP := make([]byte, 16)
-	copy(paddedIP[16-len(ip):], ip)
-	return paddedIP
-}
-
-// shuffleSubnets shuffles a slice of strings using crypto/rand
-func shuffleSubnets(subnets []string) error {
-	for i := range subnets {
-		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(subnets))))
-		if err != nil {
-			return err
-		}
-		j := jBig.Int64()
-
-		subnets[i], subnets[j] = subnets[j], subnets[i]
-	}
-	return nil
-}
-
-// shuffleSubnets shuffles a slice of strings using crypto/rand
+// shuffleSubnetsIpRange shuffles a slice of ipRange using crypto/rand
 func shuffleSubnetsIpRange(subnets []ipRange) error {
 	for i := range subnets {
 		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(subnets))))
@@ -188,20 +202,12 @@ func NewIterator(opts *statute.ScannerOptions) *IpGenerator {
 			continue
 		}
 
-		subnets, err := splitCIDR(cidr)
+		ipRange, err := newIPRange(cidr)
 		if err != nil {
-			fmt.Printf("Error splitting CIDR %s: %v\n", cidr, err)
+			fmt.Printf("Error parsing CIDR %s: %v\n", cidr, err)
 			continue
 		}
-
-		for _, subnet := range subnets {
-			ipRange, err := newIPRange(subnet) // Assuming newIPRange is defined elsewhere
-			if err != nil {
-				fmt.Printf("Error parsing CIDR %s: %v\n", subnet, err)
-				continue
-			}
-			ranges = append(ranges, ipRange)
-		}
+		ranges = append(ranges, ipRange)
 	}
 	if len(ranges) == 0 {
 		log.Fatal("No valid CIDR ranges found")
