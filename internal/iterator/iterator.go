@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"github.com/bepass-org/ipscanner/internal/cache"
 )
 
 // LCG represents a linear congruential generator with full period.
@@ -119,13 +120,48 @@ func lastIP(ipNet *net.IPNet) net.IP {
 	return lastIP
 }
 
+// func ipToBigInt(ip net.IP) *big.Int {
+// 	return new(big.Int).SetBytes(ip)
+// }
+
+// func bigIntToIP(n *big.Int) net.IP {
+// 	return net.IP(n.Bytes())
+// }
+
+
+var biDirectionalCache, _ = cache.NewBiDirectionalCache(1024) // initial cache size
+
 func ipToBigInt(ip net.IP) *big.Int {
-	return new(big.Int).SetBytes(ip)
+    if bigInt, found := biDirectionalCache.GetBigIntFromIP(ip); found {
+        return bigInt
+    }
+
+    ip = ip.To16()
+    result := new(big.Int).SetBytes(ip)
+
+    biDirectionalCache.PutIPAndBigInt(ip, result)
+
+    return result
 }
 
 func bigIntToIP(n *big.Int) net.IP {
-	return net.IP(n.Bytes())
+    if ip, found := biDirectionalCache.GetIPFromBigInt(n.String()); found {
+        return ip
+    }
+
+    ipBytes := n.Bytes()
+    if len(ipBytes) < 16 {
+        padded := make([]byte, 16-len(ipBytes), 16)
+        ipBytes = append(padded, ipBytes...)
+    }
+    ip := net.IP(ipBytes)
+
+    biDirectionalCache.PutIPAndBigInt(ip, n)
+
+    return ip
 }
+
+
 
 func addIP(ip net.IP, num *big.Int) net.IP {
 	ipInt := ipToBigInt(ip)
