@@ -5,6 +5,7 @@ go 1.21.1
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/flynn/noise v1.1.0
+	github.com/hashicorp/golang-lru v1.0.2
 	github.com/quic-go/quic-go v0.40.1
 	golang.org/x/crypto v0.4.0
 )
