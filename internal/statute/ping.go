@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
+	"net/netip"
 )
 
 type IPingResult interface {
@@ -35,19 +35,14 @@ func TlsVersionToString(ver uint16) string {
 	}
 }
 
-func isIPv4(ip net.IP) bool {
-	return len(ip.To4()) == net.IPv4len
+func IsIPv4(ip netip.Addr) bool {
+	return ip.Is4()
 }
 
-func IsIPv6(ip net.IP) bool {
-	return len(ip) == net.IPv6len && !isIPv4(ip)
+func IsIPv6(ip netip.Addr) bool {
+	return ip.Is6()
 }
 
-func CloneIP(ip net.IP) net.IP {
-	var ip2 net.IP
-	if ip != nil {
-		ip2 = make(net.IP, len(ip))
-		copy(ip2, ip)
-	}
-	return ip2
+func CloneIP(ip netip.Addr) netip.Addr {
+	return ip
 }

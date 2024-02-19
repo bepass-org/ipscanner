@@ -7,13 +7,14 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"net/netip"
 )
 
 type TlsPingResult struct {
 	Time       int
 	TLSVersion uint16
 	Err        error
-	IP         net.IP
+	IP         netip.Addr
 }
 
 func (t *TlsPingResult) Result() int {
@@ -35,7 +36,7 @@ func (t *TlsPingResult) String() string {
 type TlsPing struct {
 	Host string
 	Port uint16
-	IP   net.IP
+	IP   netip.Addr
 
 	opts *statute.ScannerOptions
 }
@@ -47,7 +48,7 @@ func (t *TlsPing) Ping() statute.IPingResult {
 func (t *TlsPing) PingContext(ctx context.Context) statute.IPingResult {
 	ip := statute.CloneIP(t.IP)
 
-	if ip == nil {
+	if !ip.IsValid() {
 		return t.errorResult(fmt.Errorf("no IP specified"))
 	}
 
@@ -60,7 +61,7 @@ func (t *TlsPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &TlsPingResult{int(time.Since(t0).Milliseconds()), t.opts.TlsVersion, nil, ip}
 }
 
-func NewTlsPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *TlsPing {
+func NewTlsPing(ip netip.Addr, host string, port uint16, opts *statute.ScannerOptions) *TlsPing {
 	return &TlsPing{
 		IP:   ip,
 		Host: host,

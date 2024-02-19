@@ -3,9 +3,11 @@ package ping
 import (
 	"context"
 	"fmt"
-	"github.com/bepass-org/ipscanner/internal/statute"
 	"net"
+	"net/netip"
 	"time"
+
+	"github.com/bepass-org/ipscanner/internal/statute"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -14,7 +16,7 @@ import (
 type QuicPingResult struct {
 	Time        int
 	Err         error
-	IP          net.IP
+	IP          netip.Addr
 	QUICVersion uint32
 	TLSVersion  uint16
 }
@@ -38,7 +40,7 @@ func (h *QuicPingResult) String() string {
 type QuicPing struct {
 	Host string
 	Port uint16
-	IP   net.IP
+	IP   netip.Addr
 
 	opts statute.ScannerOptions
 }
@@ -49,7 +51,7 @@ func (h *QuicPing) Ping() statute.IPingResult {
 
 func (h *QuicPing) PingContext(ctx context.Context) statute.IPingResult {
 	ip := statute.CloneIP(h.IP)
-	if ip == nil {
+	if !ip.IsValid() {
 		return h.errorResult(fmt.Errorf("no IP specified"))
 	}
 	addr := net.JoinHostPort(ip.String(), fmt.Sprint(h.Port))
@@ -64,7 +66,7 @@ func (h *QuicPing) PingContext(ctx context.Context) statute.IPingResult {
 	return &QuicPingResult{int(time.Since(t0).Milliseconds()), nil, ip, uint32(conn.ConnectionState().Version), conn.ConnectionState().TLS.Version}
 }
 
-func NewQuicPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *QuicPing {
+func NewQuicPing(ip netip.Addr, host string, port uint16, opts *statute.ScannerOptions) *QuicPing {
 	return &QuicPing{
 		IP:   ip,
 		Host: host,

@@ -1,10 +1,11 @@
 package cache
 
 import (
-	"net"
-	"sync"
-	"github.com/hashicorp/golang-lru"
 	"math/big"
+	"net/netip"
+	"sync"
+
+	"github.com/hashicorp/golang-lru"
 )
 
 type BiDirectionalCache struct {
@@ -30,17 +31,17 @@ func NewBiDirectionalCache(size int) (*BiDirectionalCache, error) {
 	}, nil
 }
 
-func (c *BiDirectionalCache) GetIPFromBigInt(bigIntKey string) (net.IP, bool) {
+func (c *BiDirectionalCache) GetIPFromBigInt(bigIntKey string) (netip.Addr, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
 	if ip, found := c.bigIntToIPCache.Get(bigIntKey); found {
-		return ip.(net.IP), true
+		return ip.(netip.Addr), true
 	}
-	return nil, false
+	return netip.Addr{}, false
 }
 
-func (c *BiDirectionalCache) GetBigIntFromIP(ip net.IP) (*big.Int, bool) {
+func (c *BiDirectionalCache) GetBigIntFromIP(ip netip.Addr) (*big.Int, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -50,7 +51,7 @@ func (c *BiDirectionalCache) GetBigIntFromIP(ip net.IP) (*big.Int, bool) {
 	return nil, false
 }
 
-func (c *BiDirectionalCache) PutIPAndBigInt(ip net.IP, bigInt *big.Int) {
+func (c *BiDirectionalCache) PutIPAndBigInt(ip netip.Addr, bigInt *big.Int) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

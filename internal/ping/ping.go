@@ -2,8 +2,9 @@ package ping
 
 import (
 	"fmt"
+	"net/netip"
+
 	"github.com/bepass-org/ipscanner/internal/statute"
-	"net"
 )
 
 type Ping struct {
@@ -11,7 +12,7 @@ type Ping struct {
 }
 
 // DoPing performs a ping on the given IP address.
-func (p *Ping) DoPing(ip net.IP) (int, error) {
+func (p *Ping) DoPing(ip netip.Addr) (int, error) {
 	var sum, ops, hp, tp int
 	var err error
 	if p.Options.SelectedOps&statute.HTTPPing > 0 {
@@ -60,7 +61,7 @@ func (p *Ping) DoPing(ip net.IP) (int, error) {
 	return sum / ops, nil
 }
 
-func (p *Ping) httpPing(ip net.IP) (int, error) {
+func (p *Ping) httpPing(ip netip.Addr) (int, error) {
 	return p.calc(
 		NewHttpPing(
 			ip,
@@ -76,7 +77,7 @@ func (p *Ping) httpPing(ip net.IP) (int, error) {
 	)
 }
 
-func (p *Ping) warpPing(ip net.IP) (int, error) {
+func (p *Ping) warpPing(ip netip.Addr) (int, error) {
 	return p.calc(
 		NewWarpPing(
 			ip,
@@ -85,19 +86,19 @@ func (p *Ping) warpPing(ip net.IP) (int, error) {
 	)
 }
 
-func (p *Ping) tlsPing(ip net.IP) (int, error) {
+func (p *Ping) tlsPing(ip netip.Addr) (int, error) {
 	return p.calc(
 		NewTlsPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)
 }
 
-func (p *Ping) tcpPing(ip net.IP) (int, error) {
+func (p *Ping) tcpPing(ip netip.Addr) (int, error) {
 	return p.calc(
 		NewTcpPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)
 }
 
-func (p *Ping) quicPing(ip net.IP) (int, error) {
+func (p *Ping) quicPing(ip netip.Addr) (int, error) {
 	return p.calc(
 		NewQuicPing(ip, p.Options.Hostname, p.Options.Port, p.Options),
 	)

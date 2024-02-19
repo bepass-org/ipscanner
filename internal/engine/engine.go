@@ -3,12 +3,13 @@ package engine
 import (
 	"context"
 	"fmt"
+	"net/netip"
+	"strings"
+	"time"
+
 	"github.com/bepass-org/ipscanner/internal/iterator"
 	"github.com/bepass-org/ipscanner/internal/ping"
 	"github.com/bepass-org/ipscanner/internal/statute"
-	"net"
-	"strings"
-	"time"
 )
 
 type Engine struct {
@@ -16,7 +17,7 @@ type Engine struct {
 	ipQueue    *IPQueue
 	ctx        context.Context
 	cancelFunc context.CancelFunc
-	ping       func(net.IP) (int, error)
+	ping       func(netip.Addr) (int, error)
 	statute.Logger
 }
 
@@ -43,7 +44,7 @@ func NewScannerEngine(opts *statute.ScannerOptions, ctx ...context.Context) *Eng
 	}
 }
 
-func (e *Engine) GetAvailableIPs(desc bool) []net.IP {
+func (e *Engine) GetAvailableIPs(desc bool) []netip.Addr {
 	if e.ipQueue != nil {
 		return e.ipQueue.AvailableIPs(desc)
 	}

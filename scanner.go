@@ -2,7 +2,7 @@ package ipscanner
 
 import (
 	"crypto/tls"
-	"net"
+	"net/netip"
 	"time"
 
 	"github.com/bepass-org/ipscanner/internal/engine"
@@ -13,7 +13,7 @@ type IPScanner struct {
 	options  statute.ScannerOptions
 	logger   statute.Logger
 	engine   *engine.Engine
-	onChange func([]net.IP)
+	onChange func([]netip.Addr)
 }
 
 func NewScanner(options ...Option) *IPScanner {
@@ -273,7 +273,7 @@ func (i *IPScanner) Stop() {
 	i.engine.Cancel()
 }
 
-func (i *IPScanner) GetAvailableIPS() []net.IP {
+func (i *IPScanner) GetAvailableIPS() []netip.Addr {
 	if i.engine != nil {
 		return i.engine.GetAvailableIPs(false)
 	}

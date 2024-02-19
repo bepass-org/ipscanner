@@ -3,12 +3,14 @@ package ping
 import (
 	"context"
 	"fmt"
-	"github.com/bepass-org/ipscanner/internal/statute"
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"time"
+
+	"github.com/bepass-org/ipscanner/internal/statute"
 )
 
 type HttpPingResult struct {
@@ -17,7 +19,7 @@ type HttpPingResult struct {
 	Status int
 	Length int
 	Err    error
-	IP     net.IP
+	IP     netip.Addr
 }
 
 func (h *HttpPingResult) Result() int {
@@ -39,7 +41,7 @@ func (h *HttpPingResult) String() string {
 type HttpPing struct {
 	Method string
 	URL    string
-	IP     net.IP
+	IP     netip.Addr
 
 	opts statute.ScannerOptions
 }
@@ -56,7 +58,7 @@ func (h *HttpPing) PingContext(ctx context.Context) statute.IPingResult {
 	orighost := u.Host
 	port := u.Port()
 	ip := statute.CloneIP(h.IP)
-	if ip == nil {
+	if !ip.IsValid() {
 		return h.errorResult(fmt.Errorf("no IP specified"))
 	}
 	ipstr := ip.String()
@@ -103,7 +105,7 @@ func (h *HttpPing) errorResult(err error) *HttpPingResult {
 	return r
 }
 
-func NewHttpPing(ip net.IP, method, url string, opts *statute.ScannerOptions) *HttpPing {
+func NewHttpPing(ip netip.Addr, method, url string, opts *statute.ScannerOptions) *HttpPing {
 	return &HttpPing{
 		IP:     ip,
 		Method: method,
