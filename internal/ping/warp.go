@@ -8,21 +8,23 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
+	"net"
+	"net/netip"
+	"strings"
+	"time"
+
 	"github.com/bepass-org/ipscanner/internal/statute"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/flynn/noise"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
-	"math/big"
-	"net"
-	"strings"
-	"time"
 )
 
 type WarpPingResult struct {
 	Time int
 	Err  error
-	IP   net.IP
+	IP   netip.Addr
 }
 
 func (h *WarpPingResult) Result() int {
@@ -45,7 +47,7 @@ type WarpPing struct {
 	PrivateKey    string
 	PeerPublicKey string
 	PresharedKey  string
-	IP            net.IP
+	IP            netip.Addr
 
 	opts statute.ScannerOptions
 }
@@ -283,7 +285,7 @@ func initiateHandshake(serverAddr, privateKeyBase64, peerPublicKeyBase64, presha
 	return nil
 }
 
-func NewWarpPing(ip net.IP, opts *statute.ScannerOptions) *WarpPing {
+func NewWarpPing(ip netip.Addr, opts *statute.ScannerOptions) *WarpPing {
 	return &WarpPing{
 		PrivateKey:    opts.WarpPrivateKey,
 		PeerPublicKey: opts.WarpPeerPublicKey,

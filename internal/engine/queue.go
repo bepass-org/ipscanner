@@ -1,11 +1,12 @@
 package engine
 
 import (
-	"github.com/bepass-org/ipscanner/internal/statute"
-	"net"
+	"net/netip"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/bepass-org/ipscanner/internal/statute"
 )
 
 type IPQueue struct {
@@ -142,7 +143,7 @@ func (q *IPQueue) Expire() {
 	}
 }
 
-func (q *IPQueue) AvailableIPs(desc bool) []net.IP {
+func (q *IPQueue) AvailableIPs(desc bool) []netip.Addr {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -158,7 +159,7 @@ func (q *IPQueue) AvailableIPs(desc bool) []net.IP {
 		return sortedQueue[i].RTT < sortedQueue[j].RTT
 	})
 
-	ips := make([]net.IP, len(sortedQueue))
+	ips := make([]netip.Addr, len(sortedQueue))
 	for i, info := range sortedQueue {
 		ips[i] = info.IP
 	}

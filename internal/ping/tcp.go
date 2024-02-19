@@ -7,12 +7,13 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"net/netip"
 )
 
 type TcpPingResult struct {
 	Time int
 	Err  error
-	IP   net.IP
+	IP   netip.Addr
 }
 
 func (tp *TcpPingResult) Result() int {
@@ -34,14 +35,14 @@ func (tp *TcpPingResult) String() string {
 type TcpPing struct {
 	host string
 	Port uint16
-	ip   net.IP
+	ip   netip.Addr
 
 	opts statute.ScannerOptions
 }
 
 func (tp *TcpPing) SetHost(host string) {
 	tp.host = host
-	tp.ip = net.ParseIP(host)
+	tp.ip, _= netip.ParseAddr(host)
 }
 
 func (tp *TcpPing) Host() string {
@@ -54,19 +55,19 @@ func (tp *TcpPing) Ping() statute.IPingResult {
 
 func (tp *TcpPing) PingContext(ctx context.Context) statute.IPingResult {
 	ip := statute.CloneIP(tp.ip)
-	if ip == nil {
-		return &TcpPingResult{0, fmt.Errorf("no IP specified"), nil}
+	if !ip.IsValid()  {
+		return &TcpPingResult{0, fmt.Errorf("no IP specified"), netip.Addr{}}
 	}
 	t0 := time.Now()
 	conn, err := tp.opts.RawDialerFunc(ctx, "tcp", net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(tp.Port), 10)))
 	if err != nil {
-		return &TcpPingResult{0, err, nil}
+		return &TcpPingResult{0, err, netip.Addr{}}
 	}
 	defer conn.Close()
 	return &TcpPingResult{int(time.Since(t0).Milliseconds()), nil, ip}
 }
 
-func NewTcpPing(ip net.IP, host string, port uint16, opts *statute.ScannerOptions) *TcpPing {
+func NewTcpPing(ip netip.Addr, host string, port uint16, opts *statute.ScannerOptions) *TcpPing {
 	return &TcpPing{
 		host: host,
 		Port: port,

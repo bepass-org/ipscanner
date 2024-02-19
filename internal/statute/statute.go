@@ -3,10 +3,12 @@ package statute
 import (
 	"context"
 	"crypto/tls"
-	"github.com/quic-go/quic-go"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
+
+	"github.com/quic-go/quic-go"
 )
 
 type TIPQueueChangeCallback func(ips []IPInfo)
@@ -22,7 +24,7 @@ var QUICPing = 1 << 4
 var WARPPing = 1 << 5
 
 type IPInfo struct {
-	IP        net.IP
+	IP        netip.Addr
 	RTT       int
 	CreatedAt time.Time
 }

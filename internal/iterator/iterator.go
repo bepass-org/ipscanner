@@ -3,12 +3,14 @@ package iterator
 import (
 	"crypto/rand"
 	"fmt"
-	"github.com/bepass-org/ipscanner/internal/statute"
 	"log"
 	"math/big"
 	"net"
+	"net/netip"
 	"strings"
+
 	"github.com/bepass-org/ipscanner/internal/cache"
+	"github.com/bepass-org/ipscanner/internal/statute"
 )
 
 // LCG represents a linear congruential generator with full period.
@@ -87,101 +89,134 @@ func (lcg *LCG) Next() *big.Int {
 }
 
 type ipRange struct {
-	ipNet *net.IPNet
 	lcg   *LCG
-	start net.IP
-	stop  net.IP
+	start netip.Addr
+	stop  netip.Addr
 	size  *big.Int
 	index *big.Int
 }
 
 func newIPRange(cidr string) (ipRange, error) {
-	_, ipNet, err := net.ParseCIDR(cidr)
+	ipNet, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return ipRange{}, err
 	}
+	startIP := ipNet.Addr()
+	stopIP := lastIP(ipNet)
 	size := ipRangeSize(ipNet)
 	return ipRange{
-		ipNet: ipNet,
-		start: ipNet.IP,
-		stop:  lastIP(ipNet),
+		start: startIP,
+		stop:  stopIP,
 		size:  size,
 		index: big.NewInt(0),
 		lcg:   NewLCG(size),
 	}, nil
 }
 
-func lastIP(ipNet *net.IPNet) net.IP {
-	lastIP := make(net.IP, len(ipNet.IP))
-	copy(lastIP, ipNet.IP)
-	for i := range ipNet.Mask {
-		lastIP[i] |= ^ipNet.Mask[i]
+func lastIP(prefix netip.Prefix) netip.Addr {
+    // Calculate the number of bits to fill for the last address based on the address family
+    fillBits := 128 - prefix.Bits()
+    if prefix.Addr().Is4() {
+        fillBits = 32 - prefix.Bits()
+    }
+
+    // Calculate the numerical representation of the last address by setting the remaining bits to 1
+    var lastAddrInt big.Int
+    lastAddrInt.SetBytes(prefix.Addr().AsSlice())
+    for i := 0; i < fillBits; i++ {
+        lastAddrInt.SetBit(&lastAddrInt, i, 1)
+    }
+
+    // Convert the big.Int back to netip.Addr
+    lastAddrBytes := lastAddrInt.Bytes()
+    var lastAddr netip.Addr
+    if prefix.Addr().Is4() {
+        // Ensure the slice is the right length for IPv4
+        if len(lastAddrBytes) < net.IPv4len {
+            leadingZeros := make([]byte, net.IPv4len-len(lastAddrBytes))
+            lastAddrBytes = append(leadingZeros, lastAddrBytes...)
+        }
+        lastAddr, _ = netip.AddrFromSlice(lastAddrBytes[len(lastAddrBytes)-net.IPv4len:])
+    } else {
+        // Ensure the slice is the right length for IPv6
+        if len(lastAddrBytes) < net.IPv6len {
+            leadingZeros := make([]byte, net.IPv6len-len(lastAddrBytes))
+            lastAddrBytes = append(leadingZeros, lastAddrBytes...)
+        }
+        lastAddr, _ = netip.AddrFromSlice(lastAddrBytes)
+    }
+
+    return lastAddr
+}
+
+
+
+var biDirectionalCache, _ = cache.NewBiDirectionalCache(big.MaxBase) // initial cache size
+
+func ipToBigInt(ip netip.Addr) *big.Int {
+	if bigInt, found := biDirectionalCache.GetBigIntFromIP(ip); found {
+		return bigInt
 	}
-	return lastIP
+	result := new(big.Int).SetBytes(ip.AsSlice())
+	biDirectionalCache.PutIPAndBigInt(ip, result)
+	return result
 }
 
-// func ipToBigInt(ip net.IP) *big.Int {
-// 	return new(big.Int).SetBytes(ip)
-// }
 
-// func bigIntToIP(n *big.Int) net.IP {
-// 	return net.IP(n.Bytes())
-// }
-
-
-var biDirectionalCache, _ = cache.NewBiDirectionalCache(1024) // initial cache size
-
-func ipToBigInt(ip net.IP) *big.Int {
-    if bigInt, found := biDirectionalCache.GetBigIntFromIP(ip); found {
-        return bigInt
-    }
-
-    ip = ip.To16()
-    result := new(big.Int).SetBytes(ip)
-
-    biDirectionalCache.PutIPAndBigInt(ip, result)
-
-    return result
-}
-
-func bigIntToIP(n *big.Int) net.IP {
-    if ip, found := biDirectionalCache.GetIPFromBigInt(n.String()); found {
-        return ip
-    }
-
-    ipBytes := n.Bytes()
-    if len(ipBytes) < 16 {
-        padded := make([]byte, 16-len(ipBytes), 16)
-        ipBytes = append(padded, ipBytes...)
-    }
-    ip := net.IP(ipBytes)
-
-    biDirectionalCache.PutIPAndBigInt(ip, n)
-
-    return ip
+func bigIntToIP(n *big.Int) netip.Addr {
+	if ip, found := biDirectionalCache.GetIPFromBigInt(n.String()); found {
+		return ip
+	}
+	ipBytes := n.Bytes()
+	var lastAddr netip.Addr
+	if len(ipBytes) <= net.IPv4len { // Adjust for IPv4
+		if len(ipBytes) < net.IPv4len {
+			ipBytes = append(make([]byte, net.IPv4len-len(ipBytes)), ipBytes...)
+		}
+		lastAddr, _ = netip.AddrFromSlice(ipBytes)
+	} else { // Adjust for IPv6
+		if len(ipBytes) < net.IPv6len {
+			ipBytes = append(make([]byte, net.IPv6len-len(ipBytes)), ipBytes...)
+		}
+		lastAddr, _ = netip.AddrFromSlice(ipBytes)
+	}
+	biDirectionalCache.PutIPAndBigInt(lastAddr, n)
+	return lastAddr
 }
 
 
 
-func addIP(ip net.IP, num *big.Int) net.IP {
+func addIP(ip netip.Addr, num *big.Int) netip.Addr {
 	ipInt := ipToBigInt(ip)
 	ipInt.Add(ipInt, num)
 	return bigIntToIP(ipInt)
 }
 
-func ipRangeSize(ipNet *net.IPNet) *big.Int {
-	ones, bits := ipNet.Mask.Size()
-	size := big.NewInt(1)
-	size.Lsh(size, uint(bits-ones))
-	return size
+func ipRangeSize(prefix netip.Prefix) *big.Int {
+    // The number of bits in the address depends on whether it's IPv4 or IPv6.
+    totalBits := 128 // Assume IPv6 by default
+    if prefix.Addr().Is4() {
+        totalBits = 32 // Adjust for IPv4
+    }
+
+    // Calculate the size of the range
+    bits := prefix.Bits() // This is the prefix length
+    size := big.NewInt(1)
+    size.Lsh(size, uint(totalBits-bits)) // Left shift to calculate the range size
+
+    return size
 }
+
+
+
+
 
 type IpGenerator struct {
 	ipRanges []ipRange
 }
 
-func (g *IpGenerator) NextBatch() ([]net.IP, error) {
-	var results []net.IP
+func (g *IpGenerator) NextBatch() ([]netip.Addr, error) {
+	var results []netip.Addr
 	for i, r := range g.ipRanges {
 		if r.index.Cmp(r.size) >= 0 {
 			continue
